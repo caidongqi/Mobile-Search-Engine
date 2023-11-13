@@ -476,17 +476,19 @@ class ImageBindModel(nn.Module):
         return outputs
 
 
-def imagebind_huge(pretrained=False):
+def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
+                   vision_num_heads=16,text_embed_dim=1024,text_num_blocks=24,
+                   text_num_heads=16,out_embed_dim=1024,audio_drop_path=0.1,imu_drop_path=0.7):
     model = ImageBindModel(
-        vision_embed_dim=1280,
-        vision_num_blocks=32,
-        vision_num_heads=16,
-        text_embed_dim=1024,
-        text_num_blocks=24,
-        text_num_heads=16,
-        out_embed_dim=1024,
-        audio_drop_path=0.1,
-        imu_drop_path=0.7,
+        vision_embed_dim=vision_embed_dim,
+        vision_num_blocks=vision_num_blocks,
+        vision_num_heads=vision_num_heads,
+        text_embed_dim=text_embed_dim,
+        text_num_blocks=text_num_blocks,
+        text_num_heads=text_num_heads,
+        out_embed_dim=out_embed_dim,
+        audio_drop_path=audio_drop_path,
+        imu_drop_path=imu_drop_path,
     )
 
     if pretrained:
