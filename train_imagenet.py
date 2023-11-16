@@ -223,7 +223,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
     parser.add_argument("--seed", type=int, default=43, help="Random seed for reproducibility")
     parser.add_argument("--device", type=str, default="cpu", help="Device to use for training ('cpu' or 'cuda')")
-    parser.add_argument("--datasets_dir", type=str, default="./.datasets",
+    parser.add_argument("--datasets_dir", type=str, default="/data/yx/ImageBind/.datasets/imagenet",
                         help="Directory containing the datasets")
     parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full",
                         help="Directory to save the full model checkpoints")
