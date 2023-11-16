@@ -18,30 +18,19 @@ Install `matplotlib` when using the `train.py` script without the `--headless` a
 pip install --upgrade fastapi
 ```
 
+## Search
 
-## Inference
+In `search.py`, you can find an example of how to use the model for search images of target label. To try the `LoRA` fine-tuned model, change `lora=True`, set the fine-tuned model's path `lora_dir` and the parameters in `LoRA.apply_lora_modality_trunks()` within the script. To try the original ImageBind model, set `lora=False`.
 
-In `example.py`, you can find an example of how to use the model for inference. To try the `LoRA` fine-tuned model, 
-change `lora=True` within the script. To try the original ImageBind model, set `lora=False`.
+**example explanation**: The `Imagenet` dataset contains 1000 classes, search the corresponding images for the three words(`stingray`,`cock`,`hen`) and obtain the precision and recall of the images we searched for.
 
-**example explanation**: The `dreambooth` dataset contains the classes dog3, dog5, and dog8. Since the original 
-ImageBind model was not trained on some arbitrary number-naming scheme, it matches the wrong images with dog8 and dog5. 
-However, the LoRA fine-tuned model separates the 3 dog classes, indicating it was successfully adapted
-to the toy dataset. This approach distorts the pretrained features of ImageBind. To maintain the original embeddings,
-we propose experimenting with the two-step fine-tuning approach described in 
-[this paper](https://openreview.net/pdf?id=UYneFzXSJWh): linear probing followed by full model fine-tuning. 
-To avoid diverging too far from the objective: fine-tuning the multimodal representation; We limit those two steps to fine-tuning the ImagBind model.
-In our implementation, linear probing is analogous to fine-tuning the last layer, whereas full model fine-tuning is analogous to LoRA fine-tuning 
-(Although tuning the full model is still possible by not setting the `--lora` argument). 
-ImageBind-LoRA support linear probing by passing the `--linear_probing` argument to `train.py`. Note that the training process
-should then be split into two stages, passing `--linear_probing` in an initial training session, followed by `--lora` on training
-completion. With `linear_probing`, no distortion to original pretrained features is observed. All classes are accurately predicted 
-when setting `lora=False` and `linear_probing=True` in `example.py`. Given that the example is running on a minimal toy dataset (`dreambooth`)
-and that the samples belong to a different distribution than the pretrained samples of ImageBind, we observe better outcomes than fine-tuning 
-with LoRA. This would most likely not be the case when fine-tuning on larger datasets.
+
 
 ## Fine-tuning
 
+Modify `train.py` to adapt to the training ImageNet data set, and the modified code is stored in `train_iamgenet.py`.
+
+Below is the information about `train.py`.
 To train the model, run:
 
 ```bash
@@ -104,6 +93,13 @@ python train.py --batch_size 12 --max_epochs 550 --num_workers 4 \
 replacing `--lora` with `--linear_probing` (Both cannot be set in the same run). 
 On running `--lora` in the next training session/s, the checkpoint of the heads is automatically loaded and saved,
 assuming the `--lora_checkpoint_dir` remains the same.
+
+## Inference
+
+In `test_imagent.py`, you can find an example of how to use the model for inference on ImageNet Dataset. To try the `LoRA` fine-tuned model, change `lora=True`, set the fine-tuned model's path `lora_dir` and the parameters in `LoRA.apply_lora_modality_trunks()` within the script. To try the original ImageBind model, set `lora=False`. And you can set the trunk blocks of each modlity when use `imagebind_model.imagebind_huge()`.
+
+
+
 
 
 # ImageBind: One Embedding Space To Bind Them All
