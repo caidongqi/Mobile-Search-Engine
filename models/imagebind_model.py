@@ -503,7 +503,7 @@ def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
                 progress=True,
             )
 
-        model.load_state_dict(torch.load(".checkpoints/imagebind_huge.pth"))
+        model.load_state_dict(torch.load(".checkpoints/imagebind_huge.pth"),strict=False)
 
     return model
 
