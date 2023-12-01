@@ -1,6 +1,7 @@
 # Based on PyTorch Lightning Tutorial 13 -
 # SSL : https://lightning.ai/docs/pytorch/stable/notebooks/course_UvA-DL/13-contrastive-learning.html
 # Modified by Fares Abawi (@fabawi).
+import copy
 import logging
 import os
 import argparse
@@ -70,7 +71,7 @@ class ImageBindTrain(L.LightningModule):
         self.text_list = text_list
 
         # Load full pretrained ImageBind model
-        self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=16)
+        self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=24)
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
@@ -179,9 +180,9 @@ class ImageBindTrain(L.LightningModule):
         return self.info_nce_loss(batch, mode="train")
 
     def validation_step(self, batch, batch_idx):
-        data_a, data_b = batch
+        data_a, target = batch
         data_a = [data_a]
-        text = [self.text_list[i] for i in data_b.tolist()]
+        text = copy.deepcopy(test_dataset.text_list)
         data_b = data.load_and_transform_text(text, self.device)
         data_b = [data_b]
 
@@ -196,12 +197,11 @@ class ImageBindTrain(L.LightningModule):
 
         result = torch.softmax(match_value, dim=-1)
         _, predicted = torch.max(result, -1)
-        correct = predicted.eq(data_b).sum()
+        correct = predicted.eq(target).sum()
         test_correct = correct.item()
-        test_total = data_b.size(0)
+        test_total = target.size(0)
         self.log("val" + "_acc_top1", test_correct / test_total, prog_bar=True,
                 on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
-
 
 
     def on_validation_epoch_end(self):
@@ -350,18 +350,7 @@ if __name__ == "__main__":
     )
 
     # Visualize some examples
-    if not args.headless:
-        NUM_IMAGES = args.batch_size
-        imgs = [torch.stack(train_dataset[idx][0], dim=0) for idx in range(NUM_IMAGES)]
-        imgs = torch.stack(imgs, dim=0)
-        img_grid = torchvision.utils.make_grid(imgs.reshape(-1, *imgs.shape[2:]), nrow=6, normalize=True, pad_value=0.9)
-        img_grid = img_grid.permute(1, 2, 0)
-        plt.figure(figsize=(10, 5))
-        plt.title(f"Augmented image examples of the available datasets: {args.datasets}")
-        plt.imshow(img_grid.cpu())
-        plt.axis("off")
-        plt.show()
-        plt.close()
+    
 
     # Parse indices of layers to apply LoRA
     lora_layer_idxs = {}
