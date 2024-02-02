@@ -13,8 +13,8 @@ iopath
 numpy
 matplotlib
 types-regex
-mayavi
-cartopy
+#mayavi
+#cartopy
 safetensors
 lightning==2.0.2
 scikit-learn

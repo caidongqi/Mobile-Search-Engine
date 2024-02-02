@@ -1,19 +1,20 @@
 import logging
 import torch
+from torch import nn
 import data
 import torchvision
 import torchmetrics
 import time
 import csv
 
-from models import imagebind_model
+#from models import imagebind_model
 from models import first_part_imagebind
 from models import second_part_imagebind
-from models.imagebind_model import ModalityType, load_module
+#from models.imagebind_model import ModalityType, load_module
 from models.first_part_imagebind import ModalityType, load_module
-from models.second_part_imagebind import ModalityType, load_module
 from models import lora as LoRA
-
+from models import adapter
+from models.adapter import Adapter
 from pycocotools.coco import COCO
 from torchvision import transforms
 from torch.utils.data import DataLoader
@@ -52,7 +53,7 @@ parser = argparse.ArgumentParser(description="Your script description")
 #parser.add_argument("audio_num_blocks", type=int, help="Number of audio blocks")
 
 # parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
-parser.add_argument("--device", type=str, default="cuda:1", help="Device to use (cuda:2 or cpu)")
+parser.add_argument("--device", type=str, default="cuda:7", help="Device to use (cuda:2 or cpu)")
 parser.add_argument("--vision_num_blocks", default=20,type=int, help="Number of audio blocks")
 # 解析命令行参数
 args = parser.parse_args()
@@ -60,8 +61,6 @@ args = parser.parse_args()
 # 获取 audio_num_blocks 的值
 vision_num_blocks=args.vision_num_blocks
 device = args.device
-
-
 
 assert not (linear_probing and lora), \
             "Linear probing is a subset of LoRA training procedure for ImageBind. " \
@@ -74,10 +73,9 @@ else:
     # This assumes proper loading of all params but results in shift from original dist in case of LoRA
     lora_factor = 1
 # Instantiate model
-model=first_part_imagebind.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
-#model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
-
-
+model = first_part_imagebind.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
+adapter_model=Adapter()
+model_2=second_part_imagebind.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
 if lora:
     model.modality_trunks.update(
         LoRA.apply_lora_modality_trunks(model.modality_trunks, rank=4,
@@ -102,7 +100,8 @@ elif linear_probing:
 
 model.eval()
 model.to(device)
-
+adapter_model.to(device)
+model_2.to(device)
 
 def run_inference():
     data_transform = transforms.Compose(
@@ -149,7 +148,18 @@ def run_inference():
                 ModalityType.TEXT: data.load_and_transform_text(test_ds.text_list, device),
             }
             embeddings = model(inputs)
-            match_value_1 = embeddings[ModalityType.VISION]@embeddings[ModalityType.TEXT].T * (lora_factor if lora else 1)
+            #reshaped_data_v = embeddings[ModalityType.VISION].view(1, 3, 224, 224)
+            #embeddings[ModalityType.VISION]=embeddings[ModalityType.VISION].view(-1,3*224*224)
+            reshape_vision=adapter_model(embeddings[ModalityType.VISION])
+            reshape_text=adapter_model(embeddings[ModalityType.TEXT])
+            reshape_vision = reshape_vision.expand_as(reshape_text)  
+            concat_embedding = reshape_vision + reshape_text 
+            inputs_2 = {
+                ModalityType.VISION: concat_embedding
+            }
+            result_vision=model_2(inputs_2)+reshape_vision
+            # result_text=second_part_imagebind(reshape_text)
+            match_value_1 = embeddings[ModalityType.VISION]@result_vision['vision'].T * (lora_factor if lora else 1)
             print(match_value_1.shape)
             # num=5
             # topk_indices = torch.topk(match_value_1, num, dim=-1).indices
@@ -174,22 +184,6 @@ def run_inference():
                 print(embed)
                 torch.save(embed, "output_tensor.pt")
                 return imgs
-            # for i in range(top_k_indices.size(0)):
-            #     row_tensor1 = top_k_indices[i, :]
-            #     row_tensor1= torch.add(row_tensor1, 1)
-            #     # 提取每个子tensor的第i列
-            #     column_values = [tensor.item() for tensor in target]
-            #     extracted_values = [str(item) for item in column_values]
-
-            #     # 组成新的tensor
-            #     new_tensor = torch.cat([torch.tensor(extracted_values)])
-            #     new_tensor=torch.unique(new_tensor.to(device))
-            #     intersection = torch.unique(torch.cat((row_tensor1, new_tensor)))
-            #     #intersection = torch.intersection(row_tensor1, new_tensor)
-            #     if len(intersection)<len(row_tensor1) + len(new_tensor):
-            #             correct+=1
-           
-    #total_acc = test_acc.compute()
     
     indices = [i for i, value in enumerate(counts_rs['counts_r1'] ) if value != 0]
     print(indices)
@@ -232,18 +226,6 @@ def run_inference():
 
     # 保存修改后的Excel文件
     workbook.save('topk.xlsx')
-
-    
-    # # 写入CSV文件
-    # with open(filename, 'w', newline='') as file:
-    #     writer = csv.writer(file)
-    #     writer.writerows(data)
-
-    # print(f"数据已写入CSV文件: {filename}")
-
-   
-    
-    
 
 
 if __name__ == "__main__":

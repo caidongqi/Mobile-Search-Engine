@@ -3,6 +3,7 @@ from torchvision import transforms
 from torchvision.datasets import ImageNet
 from models.imagebind_model import ModalityType
 import data
+import torch
 
 class ImageNetDataset(ImageNet):
     def __init__(self, transform, split: str = 'train', device='cpu', datadir="./datasets"):
@@ -1014,11 +1015,15 @@ class ImageNetDataset(ImageNet):
         super().__init__(datadir, split=split, transform=transform)
     
     def __getitem__(self, index: int):
-        images, target,path = super().__getitem__(index)
+        
+        images, target ,imgs= super().__getitem__(index)
         # images.to(self.device)
-        # texts = data.load_and_transform_text([self.text_list[target]], self.device)
-
+        # texts = data.load_and_transform_text([self.text_list[target]], self.device
+        
+       
+        # print(f"Image Shape: {images.shape}")
+        # prsint(f"Target Shape: {target}")
         # if self.split == "val":
         #     target.to(self.device)
         #     return images, ModalityType.VISION, texts, ModalityType.TEXT, target
-        return images, target
+        return images, target,str(imgs)

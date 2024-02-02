@@ -14,18 +14,18 @@ from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.nn.parallel import DataParallel
-from datasets.clotho_text2audio import ClothoTextDataset
-from datasets.clotho import ClothoDataset
+from api.clotho_text2audio import ClothoTextDataset
+from api.clotho import ClothoDataset
 logging.basicConfig(level=logging.INFO, force=True)
 import os
-csv_file_path = "/home/pc/Mobile-Search-Engine/datasets/clotho_captions_evaluation2.csv"
-data_dir="/home/pc/Mobile-Search-Engine/datasets/evaluation"
+csv_file_path = "/data/air/pc/Mobile-Search-Engine/datasets/clotho/clotho_captions_evaluation.csv"
+data_dir="/data/air/pc/Mobile-Search-Engine/datasets/clotho/evaluation"
 f_s=os.listdir(data_dir)
 print(len(f_s))
 pf=pd.read_csv(csv_file_path,sep=',') # 假设数据集以CSV文件形式提供
 text_list = pf[['caption_1', 'caption_2', 'caption_3', 'caption_4', 'caption_5']].values.flatten().tolist()
 audio_list=pf[['file_name']].values.flatten().tolist()
-audio_path=["/home/pc/Mobile-Search-Engine/datasets/evaluation/"+file for file in audio_list]
+audio_path=["/data/air/pc/Mobile-Search-Engine/datasets/clotho/evaluation/"+file for file in audio_list]
 
 # import argparse
 # # 创建解析器
@@ -44,8 +44,8 @@ audio_path=["/home/pc/Mobile-Search-Engine/datasets/evaluation/"+file for file i
 
 audio_num_blocks=12
 
-device_ids = [0, 1,2] 
-device = "cuda:1" if torch.cuda.is_available() else "cpu"
+device_ids = [4,5,6,7] 
+device = "cuda:5" if torch.cuda.is_available() else "cpu"
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -72,42 +72,50 @@ def run_inference():
     counts_r1=np.array([])
     counts_r10=np.array([])
     count_ones_r10=0
-    # audio_dataset=ClothoDataset(csv_file=csv_file_path,device=device,datadir=data_dir)
-    # audio_dl=DataLoader(dataset=audio_dataset,batch_size=64, shuffle=False, drop_last=False,
-    #         num_workers=4, pin_memory=True, persistent_workers=True)
-    # with torch.no_grad():
-    #      for batch_idx, (x, target) in enumerate(audio_dl):
-    #         input_audio={
-    #             ModalityType.AUDIO: data.load_and_transform_audio_data(audio_path,device)
-    #         }
-    #         audio_embedding=model(input_audio)
-    batch_size=8
+    audio_dataset=ClothoDataset(csv_file=csv_file_path,device=device,datadir=data_dir)
+
+    audio_dl=DataLoader(dataset=audio_dataset,batch_size=64, shuffle=False, drop_last=False,
+            num_workers=4, pin_memory=True, persistent_workers=True)
+    
+    batch_size=320
     batches=[audio_path[i:i+batch_size] for i in range(0,len(audio_path),batch_size)]
     audio_embeddings=torch.Tensor().to(device)
-    with torch.no_grad():
-        for batch in batches:
-            input={
-                ModalityType.AUDIO: data.load_and_transform_audio_data(batch,device=audio_embeddings.device)
-                #ModalityType.AUDIO: data.load_and_transform_audio_data(audio_path,device=audio_embeddings.device)
-            }
-            audio_embedding=model(input)
-            audio_embeddings=torch.cat((audio_embeddings,audio_embedding[ModalityType.AUDIO].to(audio_embeddings.device)),dim=0)
-    #audio_embeddings=audio_embedding
+    # with torch.no_grad():
+    #         input={
+    #             ModalityType.AUDIO: data.load_and_transform_audio_data(audio_path,device=audio_embeddings.device)
+    #             #ModalityType.AUDIO: data.load_and_transform_audio_data(audio_path,device=audio_embeddings.device)
+    #         }
+    #         audio_embedding_t=model(input)
+            
+    # with torch.no_grad():
+    #     for batch in batches:
+    #         input={
+    #             ModalityType.AUDIO: data.load_and_transform_audio_data(batch,device=audio_embeddings.device)
+    #             #ModalityType.AUDIO: data.load_and_transform_audio_data(audio_path,device=audio_embeddings.device)
+    #         }
+    #         audio_embedding=model(input)
+    #         audio_embeddings=torch.cat((audio_embeddings,audio_embedding[ModalityType.AUDIO].to(audio_embeddings.device)),dim=0)
+    # #audio_embeddings=audio_embedding
+        
     with torch.no_grad():
         for batch_idx, (x, target) in enumerate(test_dl):
             target = target.to(device)
             inputs = {
                 ModalityType.TEXT: data.load_and_transform_text(x, device),
+                ModalityType.AUDIO: data.load_and_transform_audio_data(audio_path,device=audio_embeddings.device)
             }
 
             embeddings = model(inputs)
-            match_value_1 = embeddings[ModalityType.TEXT].to(audio_embeddings.device)@audio_embeddings.T 
-            result_1 = torch.softmax(match_value_1, dim=-1)
-            _, predicted = torch.max(result_1, -1)
-            _, topk_indices = torch.topk(result_1, k=10, dim=-1)
-            counts_r1 = np.concatenate([counts_r1, [int(predicted[i] == target[i]) for i in range(len(predicted))]])
+            #match_value_1 = embeddings[ModalityType.TEXT].to(audio_embeddings.device)@audio_embeddings.T 
+            #match_value_1 = embeddings[ModalityType.TEXT] @ embeddings[ModalityType.AUDIO].T 
+            match_value_1 = embeddings[ModalityType.AUDIO] @ embeddings[ModalityType.TEXT].T 
+            result_1 = torch.softmax(match_value_1, dim=0)
+            _, predicted = torch.max(result_1, dim=0)
+            _, topk_indices = torch.topk(result_1, k=10, dim=0)
+            counts_r1 = np.concatenate([counts_r1, [int(predicted[i] == target[i].to(predicted.device)) for i in range(len(predicted))]])
             #counts_r1 = np.concatenate([counts_r1, [any(predicted[i] == target[i]) for i in range(len(predicted))]])
-            counts_r10=np.concatenate([counts_r10, [int(any(topk_indices[i] == target[i])) for i in range(len(target))]])
+            topk_indices=topk_indices.T
+            counts_r10=np.concatenate([counts_r10, [int(any(topk_indices[i] == target[i].to(predicted.device))) for i in range(len(target))]])
             # counts_10= calculate_intersection(target, topk_indices)
             # counts_10_ratio=[x / 5 for x in counts_10]
             #counts_r10=np.concatenate([counts_r10, [int(any(topk_indices[i] == target[i]) for i in range(len(predicted)))]])

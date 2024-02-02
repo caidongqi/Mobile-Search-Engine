@@ -1,3 +1,11 @@
 **__pycache__
 .vscode
 .DS_Store
+datasets/*
+results/*
+lightning_logs/*
+bpe/*
+.checkpoints/*
+.datasets/*
+results/*
+zz_ignore./*

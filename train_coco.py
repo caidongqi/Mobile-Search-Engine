@@ -1,7 +1,6 @@
 # Based on PyTorch Lightning Tutorial 13 -
 # SSL : https://lightning.ai/docs/pytorch/stable/notebooks/course_UvA-DL/13-contrastive-learning.html
 # Modified by Fares Abawi (@fabawi).
-import copy
 import logging
 import os
 import argparse
@@ -26,14 +25,13 @@ from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch import loggers as pl_loggers
 
-
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
 import torchvision
 from torchvision import transforms
-from datasets.imagenet import ImageNetDataset
+from datasets.coco import CoCoDataset
 import data
 
 from models import imagebind_model
@@ -72,7 +70,7 @@ class ImageBindTrain(L.LightningModule):
         self.text_list = text_list
 
         # Load full pretrained ImageBind model
-        self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=24)
+        self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=16)
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
@@ -181,9 +179,9 @@ class ImageBindTrain(L.LightningModule):
         return self.info_nce_loss(batch, mode="train")
 
     def validation_step(self, batch, batch_idx):
-        data_a, target = batch
+        data_a, data_b = batch
         data_a = [data_a]
-        text = copy.deepcopy(test_dataset.text_list)
+        text = [self.text_list[i] for i in data_b.tolist()]
         data_b = data.load_and_transform_text(text, self.device)
         data_b = [data_b]
 
@@ -198,11 +196,12 @@ class ImageBindTrain(L.LightningModule):
 
         result = torch.softmax(match_value, dim=-1)
         _, predicted = torch.max(result, -1)
-        correct = predicted.eq(target).sum()
+        correct = predicted.eq(data_b).sum()
         test_correct = correct.item()
-        test_total = target.size(0)
+        test_total = data_b.size(0)
         self.log("val" + "_acc_top1", test_correct / test_total, prog_bar=True,
                 on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+
 
 
     def on_validation_epoch_end(self):
@@ -223,8 +222,8 @@ class ImageBindTrain(L.LightningModule):
 def parse_args():
     parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
     parser.add_argument("--seed", type=int, default=43, help="Random seed for reproducibility")
-    parser.add_argument("--device", type=str, default="cuda:2", help="Device to use for training ('cpu' or 'cuda')")
-    parser.add_argument("--datasets_dir", type=str, default="/data/yx/ImageBind/.datasets/imagenet",
+    parser.add_argument("--device", type=str, default="cpu", help="Device to use for training ('cpu' or 'cuda')")
+    parser.add_argument("--datasets_dir", type=str, default="/data/air/pc/ImageBind/dataset/val2017/val2017",
                         help="Directory containing the datasets")
     parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full",
                         help="Directory to save the full model checkpoints")
@@ -247,7 +246,7 @@ def parse_args():
 
     parser.add_argument("--lora", action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora_coco",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
@@ -330,9 +329,17 @@ if __name__ == "__main__":
         ]
     )
 
-    train_dataset = ImageNetDataset(transform=data_transform,split='train',device=device,datadir=args.datasets_dir)
-    test_dataset = ImageNetDataset(transform=data_transform,split='val',device=device,datadir=args.datasets_dir)
 
+    coco_train_annotation_file="/data/air/pc/ImageBind/dataset/annotations_trainval2017/annotations/instances_train2017.json"
+    coco_annotation_file="/data/air/pc/ImageBind/dataset/annotations_trainval2017/annotations/instances_val2017.json"
+    datasets_dir2="/data/air/pc/ImageBind/dataset/train2017"
+    
+    #train_dataset = ImageNetDataset(transform=data_transform,split='train',device=device,datadir=args.datasets_dir)
+    #test_dataset = ImageNetDataset(transform=data_transform,split='val',device=device,datadir=args.datasets_dir)
+    train_dataset=CoCoDataset(datadir=datasets_dir2, annFile=coco_train_annotation_file,transform=data_transform)
+    #test_ds = ImageNetDataset(datadir=test_coco, split="val", transform=data_transform)
+    test_dataset=CoCoDataset(datadir=args.datasets_dir, annFile=coco_annotation_file,transform=data_transform)
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -349,6 +356,22 @@ if __name__ == "__main__":
         pin_memory=False,
         num_workers=args.num_workers,
     )
+
+    # Visualize some examples
+    if not args.headless:
+        NUM_IMAGES = args.batch_size
+        imgs = [torch.stack(tuple(train_dataset[idx][0]), dim=0) for idx in range(NUM_IMAGES)]
+
+        #imgs = [torch.stack(train_dataset[idx][0], dim=0) for idx in range(NUM_IMAGES)]
+        imgs = torch.stack(imgs, dim=0)
+        img_grid = torchvision.utils.make_grid(imgs.reshape(-1, *imgs.shape[2:]), nrow=6, normalize=True, pad_value=0.9)
+        img_grid = img_grid.permute(1, 2, 0)
+        plt.figure(figsize=(10, 5))
+        plt.title(f"Augmented image examples of the available datasets: {args.datasets}")
+        plt.imshow(img_grid.cpu())
+        plt.axis("off")
+        plt.show()
+        plt.close()
 
     # Parse indices of layers to apply LoRA
     lora_layer_idxs = {}
@@ -381,13 +404,11 @@ if __name__ == "__main__":
                                                         save_last=True, mode="min")]}
     else:
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,}
-    #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
-    
+
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[0,1,2,3,4,5,6,7], deterministic=True,
+                      devices=1 if ":" not in device_name else [int(device_name.split(":")[1])], deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
-                      logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true')
+                      logger=loggers if loggers else None, **checkpointing)
 
     trainer.fit(model, train_loader, val_loader)
-
 

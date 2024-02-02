@@ -444,20 +444,21 @@ class ImageBindModel(nn.Module):
     def forward(self, inputs):
         outputs = {}
         for modality_key, modality_value in inputs.items():
-            reduce_list = (
-                modality_value.ndim >= 5
-            )  # Audio and Video inputs consist of multiple clips
-            if reduce_list:
-                B, S = modality_value.shape[:2]
-                modality_value = modality_value.reshape(
-                    B * S, *modality_value.shape[2:]
-                )
+            # reduce_list = (
+            #     modality_value.sndim >= 5
+            # )  # Audio and Video inputs consist of multiple clips
+            # if reduce_list:
+            #     B, S = modality_value.shape[:2]
+            #     modality_value = modality_value.reshape(
+            #         B * S, *modality_value.shape[2:]
+            #     )
 
             if modality_value is not None:
                 modality_value = self.modality_preprocessors[modality_key](
                     **{modality_key: modality_value}
                 )
                 trunk_inputs = modality_value["trunk"]
+                
                 head_inputs = modality_value["head"]
                 modality_value = self.modality_trunks[modality_key](**trunk_inputs)
                 modality_value = self.modality_heads[modality_key](
@@ -467,9 +468,9 @@ class ImageBindModel(nn.Module):
                     modality_value
                 )
 
-                if reduce_list:
-                    modality_value = modality_value.reshape(B, S, -1)
-                    modality_value = modality_value.mean(dim=1)
+                # if reduce_list:
+                #     modality_value = modality_value.reshape(B, S, -1)
+                #     modality_value = modality_value.mean(dim=1)
 
                 outputs[modality_key] = modality_value
 
@@ -503,10 +504,9 @@ def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
                 ".checkpoints/imagebind_huge.pth",
                 progress=True,
             )
-
         state_dict = torch.load(".checkpoints/imagebind_huge.pth", map_location=torch.device('cpu'))
         model.load_state_dict(state_dict, strict=False)
-
+       
 
     return model
 

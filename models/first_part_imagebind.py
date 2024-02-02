@@ -463,9 +463,9 @@ class ImageBindModel(nn.Module):
                 modality_value = self.modality_heads[modality_key](
                     modality_value, **head_inputs
                 )
-                modality_value = self.modality_postprocessors[modality_key](
-                    modality_value
-                )
+                # modality_value = self.modality_postprocessors[modality_key](
+                #     modality_value
+                # )
 
                 if reduce_list:
                     modality_value = modality_value.reshape(B, S, -1)
@@ -503,10 +503,9 @@ def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
                 ".checkpoints/imagebind_huge.pth",
                 progress=True,
             )
-
         state_dict = torch.load(".checkpoints/imagebind_huge.pth", map_location=torch.device('cpu'))
         model.load_state_dict(state_dict, strict=False)
-
+       
 
     return model
 

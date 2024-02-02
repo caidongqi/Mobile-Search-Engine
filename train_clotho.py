@@ -5,6 +5,8 @@ import copy
 import logging
 import os
 import argparse
+import torch.multiprocessing as mp
+from torch.nn.parallel import DataParallel
 
 try:
     import comet_ml
@@ -26,19 +28,25 @@ from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch import loggers as pl_loggers
 
-
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
 import torchvision
 from torchvision import transforms
 from datasets.imagenet import ImageNetDataset
+from api.clotho_text2audio import ClothoTextDataset
 import data
 
 from models import imagebind_model
 from models import lora as LoRA
 from models.imagebind_model import ModalityType, load_module, save_module
+
+# import multiprocessing
+
+# if multiprocessing.get_start_method(allow_none=True) != 'spawn':
+#     multiprocessing.set_start_method('spawn')
 
 logging.basicConfig(level=logging.INFO, force=True)
 
@@ -70,9 +78,12 @@ class ImageBindTrain(L.LightningModule):
             "Linear probing stores params in lora_checkpoint_dir"
         self.save_hyperparameters()
         self.text_list = text_list
-
         # Load full pretrained ImageBind model
         self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=24)
+        #self.model = nn.parallel.DistributedDataParallel(model, device_ids=[rank])
+        self.model = DataParallel(self.model)
+        self.model = self.model.to('cuda:0')
+
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
@@ -113,17 +124,17 @@ class ImageBindTrain(L.LightningModule):
         return [optimizer], [lr_scheduler]
 
     def info_nce_loss(self, batch, mode="train"):
-        data_a, data_b = batch
-        data_a = [data_a]
-        text = [self.text_list[i] for i in data_b.tolist()]
-        data_b = data.load_and_transform_text(text, self.device)
-        data_b = [data_b]
+        data_a, class_a,data_b,class_b = batch
+        # data_a = [data_a]
+        # text = [self.text_list[i] for i in data_b.tolist()]
+        # data_b = data.load_and_transform_text(text, self.device)
+        # data_b = [data_b]
 
         # class_a is always "vision" according to ImageBind
-        feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
+        feats_a = [self.model({class_a[0]: data_a_i}) for data_a_i in data_a]
         feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
         # class_b could be any modality
-        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
+        feats_b = [self.model({class_b[0]: data_b_i}) for data_b_i in data_b]
         feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
 
         if self.hparams.self_contrast:
@@ -181,29 +192,29 @@ class ImageBindTrain(L.LightningModule):
         return self.info_nce_loss(batch, mode="train")
 
     def validation_step(self, batch, batch_idx):
-        data_a, target = batch
-        data_a = [data_a]
-        text = copy.deepcopy(test_dataset.text_list)
-        data_b = data.load_and_transform_text(text, self.device)
-        data_b = [data_b]
+        # data_a, target = batch
+        # data_a = [data_a]
+        # text = copy.deepcopy(test_dataset.text_list)
+        # data_b = data.load_and_transform_text(text, self.device)
+        # data_b = [data_b]
 
-        # class_a is always "vision" according to ImageBind
-        feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
-        feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
-        # class_b could be any modality
-        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
-        feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
+        # # class_a is always "vision" according to ImageBind
+        # feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
+        # feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
+        # # class_b could be any modality
+        # feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
+        # feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
 
-        match_value = feats_a_tensor @ feats_b_tensor.T
+        # match_value = feats_a_tensor @ feats_b_tensor.T
 
-        result = torch.softmax(match_value, dim=-1)
-        _, predicted = torch.max(result, -1)
-        correct = predicted.eq(target).sum()
-        test_correct = correct.item()
-        test_total = target.size(0)
-        self.log("val" + "_acc_top1", test_correct / test_total, prog_bar=True,
-                on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
-
+        # result = torch.softmax(match_value, dim=-1)
+        # _, predicted = torch.max(result, -1)
+        # correct = predicted.eq(target).sum()
+        # test_correct = correct.item()
+        # test_total = target.size(0)
+        # self.log("val" + "_acc_top1", test_correct / test_total, prog_bar=True,
+        #         on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+        self.info_nce_loss(batch, mode="val")
 
     def on_validation_epoch_end(self):
         if self.hparams.lora:
@@ -223,10 +234,10 @@ class ImageBindTrain(L.LightningModule):
 def parse_args():
     parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
     parser.add_argument("--seed", type=int, default=43, help="Random seed for reproducibility")
-    parser.add_argument("--device", type=str, default="cuda:2", help="Device to use for training ('cpu' or 'cuda')")
-    parser.add_argument("--datasets_dir", type=str, default="/data/yx/ImageBind/.datasets/imagenet",
+    parser.add_argument("--device", type=str, default="cuda:0", help="Device to use for training ('cpu' or 'cuda')")
+    parser.add_argument("--datasets_dir", type=str, default="/home/pc/Mobile-Search-Engine/datasets/clotho_captions_evaluation.csv",
                         help="Directory containing the datasets")
-    parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full",
+    parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full_clotho",
                         help="Directory to save the full model checkpoints")
     parser.add_argument("--full_model_checkpointing", action="store_true", help="Save full model checkpoints")
     parser.add_argument("--loggers", type=str, nargs="+", choices=["tensorboard", "wandb", "comet", "mlflow"],
@@ -247,9 +258,9 @@ def parse_args():
 
     parser.add_argument("--lora", action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora_clotho",
                         help="Directory to save LoRA checkpoint")
-    parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
+    parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["audio", "text"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
                         help="Modality names to apply LoRA")
     parser.add_argument("--lora_layer_idxs", nargs="+", type=int,
@@ -274,8 +285,11 @@ def parse_args():
 
 
 if __name__ == "__main__":
-    args = parse_args()
+    torch.cuda.init()
+    torch.backends.cuda.max_split_size_mb = 0
 
+    args = parse_args()
+    mp.set_start_method('spawn', force=True)
     # Create loggers
     loggers = []
     for logger in args.loggers if args.loggers is not None else []:
@@ -313,9 +327,11 @@ if __name__ == "__main__":
     # Set experiment properties
     seed_everything(args.seed, workers=True)
     torch.backends.cudnn.determinstic = True
+    # device_name = '0'
+    # device = "cuda:0" if torch.cuda.is_available() else "cpu"
     device_name = args.device  # "cuda:0" if torch.cuda.is_available() else "cpu"
     device = torch.device(device_name)
-
+ 
     data_transform = transforms.Compose(
         [
             transforms.Resize(
@@ -329,26 +345,34 @@ if __name__ == "__main__":
             ),
         ]
     )
+    
+    
+    Clotho_dataset = ClothoTextDataset(csv_file=args.datasets_dir,datadir="/home/pc/Mobile-Search-Engine/datasets/evaluation",device=device)
+    test_dl = DataLoader(dataset=Clotho_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False,
+             num_workers=4, pin_memory=False, persistent_workers=args.num_workers)
+    
+    # train_dataset = ImageNetDataset(transform=data_transform,split='train',device=device,datadir=args.datasets_dir)
+    # test_dataset = ImageNetDataset(transform=data_transform,split='val',device=device,datadir=args.datasets_dir)
 
-    train_dataset = ImageNetDataset(transform=data_transform,split='train',device=device,datadir=args.datasets_dir)
-    test_dataset = ImageNetDataset(transform=data_transform,split='val',device=device,datadir=args.datasets_dir)
+    # train_loader = DataLoader(
+    #     train_dataset,
+    #     batch_size=args.batch_size,
+    #     shuffle=True,
+    #     drop_last=True,
+    #     pin_memory=False,
+    #     num_workers=args.num_workers,
+    # )
+    # val_loader = DataLoader(
+    #     test_dataset,
+    #     batch_size=args.batch_size,
+    #     shuffle=False,
+    #     drop_last=False,
+    #     pin_memory=False,
+    #     num_workers=args.num_workers,
+    # )
 
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        drop_last=True,
-        pin_memory=False,
-        num_workers=args.num_workers,
-    )
-    val_loader = DataLoader(
-        test_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        drop_last=False,
-        pin_memory=False,
-        num_workers=args.num_workers,
-    )
+    # Visualize some examples
+    
 
     # Parse indices of layers to apply LoRA
     lora_layer_idxs = {}
@@ -372,7 +396,7 @@ if __name__ == "__main__":
                            lora=args.lora, lora_rank=args.lora_rank, lora_checkpoint_dir=args.lora_checkpoint_dir,
                            lora_layer_idxs=lora_layer_idxs if lora_layer_idxs else None,
                            lora_modality_names=lora_modality_names if lora_modality_names else None,
-                           linear_probing=args.linear_probing, text_list=test_dataset.text_list)
+                           linear_probing=args.linear_probing, text_list=Clotho_dataset.text_list)
 
     if args.full_model_checkpointing:
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,
@@ -381,13 +405,12 @@ if __name__ == "__main__":
                                                         save_last=True, mode="min")]}
     else:
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,}
-    #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
-    
+
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[0,1,2,3,4,5,6,7], deterministic=True,
+                      devices=2,# 指定使用的 GPU 数量
+                       deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
-                      logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true')
+                      logger=loggers if loggers else None, **checkpointing)
 
-    trainer.fit(model, train_loader, val_loader)
-
+    trainer.fit(model, test_dl)
 
