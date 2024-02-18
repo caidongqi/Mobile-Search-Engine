@@ -50,7 +50,7 @@ def save_lora_modality_trunks(modality_trunks_1: Dict[str, SimpleTransformer],mo
                 logging.info(f"Saved LoRA parameters for modality {modality_name_1} to {checkpoint_dir}.")  
                 
             if isinstance(modality_trunk_2, LoRA_SimpleTransformer):  
-                modality_trunk_2.save_lora_parameters2(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name_2}{postfix}.{extension}"), num1=len(modality_trunk_2.w_As), merged_dict=dict)  
+                modality_trunk_2.save_lora_parameters2(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name_2}{postfix}.{extension}"), num1=len(modality_trunk_1.w_As), merged_dict=dict)  
                 logging.info(f"Saved LoRA parameters for modality {modality_name_2} to {checkpoint_dir}.")  
                 
         except FileNotFoundError:  
