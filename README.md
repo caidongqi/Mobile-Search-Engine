@@ -257,3 +257,22 @@ and Singh, Mannat and Alwala, Kalyan Vasudev and Joulin, Armand and Misra, Ishan
   year={2023}
 }
 ```
+
+
+## train_lumen_imagenet.py
+used to train lumen model
+
+use the codes below to train experiment6:
+ self.model = lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=1,vision_num_blocks_2=30,text_num_blocks=24)
+
+use the codes below to train experiment1:
+ self.model = lumen_model.imagebind_huge(pretrained=True,vision_num_blocks_1=1,vision_num_blocks_2=30,text_num_blocks=24)
+      
+other parameters(most can be changed in the function "parser"):
+lora_dir:
+parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/lume_lora-666!!!")
+device:
+parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training and validation")
+....
+trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
+                      devices=[1,2,3], deterministic=True)

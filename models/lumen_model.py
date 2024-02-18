@@ -43,7 +43,8 @@ class ImageBindModel(nn.Module):
         audio_stride=10,
         out_embed_dim=768,
         vision_embed_dim=1024,
-        vision_num_blocks=24,
+        vision_num_blocks_1=31,
+        vision_num_blocks_2=1,
         vision_num_heads=16,
         audio_embed_dim=768,
         audio_num_blocks=12,
@@ -71,7 +72,7 @@ class ImageBindModel(nn.Module):
         imu_drop_path=0.7,
     ):
         super().__init__()
-
+        self.flag=0
         self.modality_preprocessors = self._create_modality_preprocessors(
             video_frames,
             vision_embed_dim,
@@ -89,9 +90,34 @@ class ImageBindModel(nn.Module):
             imu_embed_dim,
         )
 
-        self.modality_trunks = self._create_modality_trunks(
+        self.modality_trunks_1 = self._create_modality_trunks(
             vision_embed_dim,
-            vision_num_blocks,
+            vision_num_blocks_1,
+            vision_num_heads,
+            text_embed_dim,
+            text_num_blocks,
+            text_num_heads,
+            audio_embed_dim,
+            audio_num_blocks,
+            audio_num_heads,
+            audio_drop_path,
+            depth_embed_dim,
+            depth_num_blocks,
+            depth_num_heads,
+            depth_drop_path,
+            thermal_embed_dim,
+            thermal_num_blocks,
+            thermal_num_heads,
+            thermal_drop_path,
+            imu_embed_dim,
+            imu_num_blocks,
+            imu_num_heads,
+            imu_drop_path,
+        )
+        
+        self.modality_trunks_2 = self._create_modality_trunks(
+            vision_embed_dim,
+            vision_num_blocks_2,
             vision_num_heads,
             text_embed_dim,
             text_num_blocks,
@@ -127,7 +153,26 @@ class ImageBindModel(nn.Module):
         self.modality_postprocessors = self._create_modality_postprocessors(
             out_embed_dim
         )
-
+        self.fc = nn.Linear(1024, 512*7*7)  
+        self.up_sample = nn.Sequential(  
+            nn.ReLU(),  
+            nn.BatchNorm2d(512),  
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),  
+            nn.ReLU(),  
+            nn.BatchNorm2d(256),  
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),  
+            nn.ReLU(),  
+            nn.BatchNorm2d(128),  
+            nn.ConvTranspose2d(128, 64, kernel_size=4, stride=2, padding=1),  
+            nn.ReLU(),  
+            nn.BatchNorm2d(64),  
+            nn.ConvTranspose2d(64, 32, kernel_size=4, stride=2, padding=1),  # 新增的转置卷积层  
+            nn.ReLU(),  
+            nn.BatchNorm2d(32),  
+            nn.ConvTranspose2d(32, 3, kernel_size=4, stride=2, padding=1),  
+            nn.Tanh()  
+        )  
+        
     def _create_modality_preprocessors(
         self,
         video_frames=2,
@@ -444,8 +489,9 @@ class ImageBindModel(nn.Module):
     def forward(self, inputs):
         outputs = {}
         for modality_key, modality_value in inputs.items():
+            modality_value=modality_value[0]
             reduce_list = (
-                modality_value.ndim >= 5
+                modality_value[0].ndim >= 5
             )  # Audio and Video inputs consist of multiple clips
             if reduce_list:
                 B, S = modality_value.shape[:2]
@@ -459,32 +505,60 @@ class ImageBindModel(nn.Module):
                 )
                 trunk_inputs = modality_value["trunk"]
                 head_inputs = modality_value["head"]
-                modality_value = self.modality_trunks[modality_key](**trunk_inputs)
+                modality_value = self.modality_trunks_1[modality_key](**trunk_inputs)
                 
                 modality_value = self.modality_heads[modality_key](
                     modality_value, **head_inputs
                 )
-                
-                
-                # modality_value = self.modality_postprocessors[modality_key](
-                #     modality_value
-                # )
-
+                x=modality_value
+                # x = self.fc(x)  
+                # x = x.view(x.size(0), 512, 7, 7)  # reshape to 4D tensor  
+                # x = self.up_sample(x)  
+                modality_value=x
+              
                 if reduce_list:
                     modality_value = modality_value.reshape(B, S, -1)
                     modality_value = modality_value.mean(dim=1)
 
                 outputs[modality_key] = modality_value
+        query_embedding=torch.Tensor()
+        for modality_key in outputs:
+            if(outputs[modality_key].shape[0]==1):
+                query_embedding=outputs[modality_key]
+        for modality_key in outputs:
+            if(outputs[modality_key].shape[0]!=1):
+                query_embedding=query_embedding.expand_as(outputs[modality_key])
+                outputs[modality_key]+=query_embedding
+                x=outputs[modality_key]
+                x = self.fc(x)  
+                x = x.view(x.size(0), 512, 7, 7)  # reshape to 4D tensor  
+                x = self.up_sample(x)  
+                modality_value=x
                 
+                modality_value = self.modality_preprocessors['vision'](
+                    **{'vision': modality_value}
+                )
+                trunk_inputs = modality_value["trunk"]
+                
+                head_inputs = modality_value["head"]
+                modality_value = self.modality_trunks_2["vision"](**trunk_inputs)
+                modality_value = self.modality_heads["vision"](
+                    modality_value, **head_inputs
+                )
+                modality_value = self.modality_postprocessors["vision"](
+                    modality_value
+                )
+                outputs[modality_key] = modality_value
         return outputs
 
 
-def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
+def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks_1=31,vision_num_blocks_2=1,
                    vision_num_heads=16,text_embed_dim=1024,text_num_blocks=24,
                    text_num_heads=16,out_embed_dim=1024,audio_drop_path=0.1,imu_drop_path=0.7,audio_num_blocks=12):
     model = ImageBindModel(
         vision_embed_dim=vision_embed_dim,
-        vision_num_blocks=vision_num_blocks,
+        vision_num_blocks_1=vision_num_blocks_1,
+        vision_num_blocks_2=vision_num_blocks_2,
         vision_num_heads=vision_num_heads,
         text_embed_dim=text_embed_dim,
         text_num_blocks=text_num_blocks,

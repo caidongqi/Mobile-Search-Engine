@@ -34,8 +34,8 @@ linear_probing = False
 #device="cpu"
 #device = "cuda:6" if torch.cuda.is_available() else "cpu"
 load_head_post_proc_finetuned = True
-imagenet_datadir = "/data/yx/ImageBind/.datasets/imagenet"
-#imagenet_datadir = "/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet"
+#imagenet_datadir = "/data/yx/ImageBind/.datasets/imagenet"
+imagenet_datadir = "/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet"
 coco_datadir="/data/air/pc/ImageBind/dataset/val2017/val2017"
 test_coco="/data/air/pc/ImageBind/dataset/tempoimage"
 datadir1='/data/air/pc/Mobile-Search-Engine/datasets/imagenet-10'
@@ -53,7 +53,7 @@ parser = argparse.ArgumentParser(description="Your script description")
 
 # parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
 parser.add_argument("--device", type=str, default="cuda:1", help="Device to use (cuda:2 or cpu)")
-parser.add_argument("--vision_num_blocks", default=20,type=int, help="Number of audio blocks")
+parser.add_argument("--vision_num_blocks", default=32,type=int, help="Number of audio blocks")
 # 解析命令行参数
 args = parser.parse_args()
 

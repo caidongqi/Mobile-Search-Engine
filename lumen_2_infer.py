@@ -8,13 +8,12 @@ import time
 import csv
 
 #from models import imagebind_model
-from models import first_part_imagebind
-from models import second_part_imagebind
+from models import lumen_model
 #from models.imagebind_model import ModalityType, load_module
-from models.first_part_imagebind import ModalityType, load_module
+from models.lumen_model import ModalityType, load_module
 from models import lora as LoRA
-from models import adapter
-from models.adapter import Adapter
+# from models import adapter
+# from models.adapter import Adapter
 from pycocotools.coco import COCO
 from torchvision import transforms
 from torch.utils.data import DataLoader
@@ -73,9 +72,8 @@ else:
     # This assumes proper loading of all params but results in shift from original dist in case of LoRA
     lora_factor = 1
 # Instantiate model
-model = first_part_imagebind.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
-adapter_model=Adapter()
-model_2=second_part_imagebind.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
+model = lumen_model.imagebind_huge(pretrained=True,vision_num_blocks_1=31,vision_num_blocks_2=1)
+
 if lora:
     model.modality_trunks.update(
         LoRA.apply_lora_modality_trunks(model.modality_trunks, rank=4,
@@ -100,8 +98,7 @@ elif linear_probing:
 
 model.eval()
 model.to(device)
-adapter_model.to(device)
-model_2.to(device)
+
 
 def run_inference():
     data_transform = transforms.Compose(
@@ -148,16 +145,15 @@ def run_inference():
                 ModalityType.TEXT: data.load_and_transform_text(test_ds.text_list, device),
             }
             embeddings = model(inputs)#经过imagebind第一部分
-            #有问题
-            reshape_vision=adapter_model(embeddings[ModalityType.VISION])#经过adapter
-            reshape_text=adapter_model(embeddings[ModalityType.TEXT])#经过adapter
-            reshape_vision = reshape_vision.expand_as(reshape_text)  
-            concat_embedding = reshape_vision + reshape_text #concat后的embedding
-            inputs_2 = {
-                ModalityType.VISION: concat_embedding
-            }
-            result_vision=model_2(inputs_2)+reshape_vision#经过imagebind的第二部分
-            match_value_1 = embeddings[ModalityType.VISION]@result_vision['vision'].T * (lora_factor if lora else 1)
+            # # reshape_vision=adapter_model(embeddings[ModalityType.VISION])#经过adapter
+            # # reshape_text=adapter_model(embeddings[ModalityType.TEXT])#经过adapter
+            # reshape_vision = reshape_vision.expand_as(reshape_text)  
+            # concat_embedding = reshape_vision + reshape_text #concat后的embedding
+            # inputs_2 = {
+            #     ModalityType.VISION: concat_embedding
+            # }
+            # result_vision=model_2(inputs_2)+reshape_vision#经过imagebind的第二部分
+            match_value_1 = embeddings[ModalityType.VISION]@embeddings[ModalityType.TEXT].T * (lora_factor if lora else 1)
             print(match_value_1.shape)
             # num=5
             # topk_indices = torch.topk(match_value_1, num, dim=-1).indices

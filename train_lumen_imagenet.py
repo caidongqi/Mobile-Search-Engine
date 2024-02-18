@@ -25,7 +25,7 @@ import lightning as L
 from lightning.pytorch import Trainer, seed_everything
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch import loggers as pl_loggers
-
+from data import load_and_transform_text
 
 import torch
 import torch.nn.functional as F
@@ -35,11 +35,12 @@ import torchvision
 from torchvision import transforms
 from datasets.imagenet import ImageNetDataset
 import data
-
-from models import imagebind_model
-from models import lora as LoRA
-from models.imagebind_model import ModalityType, load_module, save_module
-
+from models import lumen6_model
+from models import lumen_model
+from models import lora_lumen as LoRA
+#from models.imagebind_model import ModalityType, load_module, save_module
+from models.lumen6_model import ModalityType, load_module,save_module
+from models.lumen_model import ModalityType, load_module,save_module
 logging.basicConfig(level=logging.INFO, force=True)
 
 # Logging settings
@@ -59,7 +60,7 @@ class ContrastiveTransformations:
 class ImageBindTrain(L.LightningModule):
     def __init__(self, lr=5e-4, weight_decay=1e-4, max_epochs=500, batch_size=32, num_workers=4, seed=42, 
                  self_contrast=False, temperature=0.07,  momentum_betas=(0.9, 0.95), 
-                 lora=True, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
+                 lora=False, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
                  lora_layer_idxs=None, lora_modality_names=None,
                  linear_probing=False, text_list=[]
                  ):
@@ -70,20 +71,25 @@ class ImageBindTrain(L.LightningModule):
             "Linear probing stores params in lora_checkpoint_dir"
         self.save_hyperparameters()
         self.text_list = text_list
-
         # Load full pretrained ImageBind model
-        self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=24)
+        self.model = lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=1,vision_num_blocks_2=30,text_num_blocks=24)
+      
+
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
-            for modality_trunk in self.model.modality_trunks.children():
+            for modality_trunk in self.model.modality_trunks_1.children():
                 modality_trunk.requires_grad_(True)
-                
-            self.model.modality_trunks.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks, rank=lora_rank,
+            for modality_trunk in self.model.modality_trunks_2.children():
+                modality_trunk.requires_grad_(True)
+            self.model.modality_trunks_1.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks_1, rank=lora_rank,
                                                                               layer_idxs=lora_layer_idxs,
                                                                               modality_names=lora_modality_names))
-            LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=lora_checkpoint_dir)
-
+            LoRA.load_lora_modality_trunks(self.model.modality_trunks_1, checkpoint_dir=lora_checkpoint_dir)
+            self.model.modality_trunks_2.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks_2, rank=lora_rank,
+                                                                              layer_idxs=lora_layer_idxs,
+                                                                              modality_names=lora_modality_names))
+            LoRA.load_lora_modality_trunks(self.model.modality_trunks_2, checkpoint_dir=lora_checkpoint_dir)
             # Load postprocessors & heads
             load_module(self.model.modality_postprocessors, module_name="postprocessors",
                         checkpoint_dir=lora_checkpoint_dir)
@@ -111,21 +117,24 @@ class ImageBindTrain(L.LightningModule):
             optimizer, T_max=self.hparams.max_epochs, eta_min=self.hparams.lr / 50
         )
         return [optimizer], [lr_scheduler]
-
+    
+    
+    
     def info_nce_loss(self, batch, mode="train"):
         data_a, data_b = batch
-        data_a = [data_a]
+        #data_a=[data_a]
         text = [self.text_list[i] for i in data_b.tolist()]
         data_b = data.load_and_transform_text(text, self.device)
         data_b = [data_b]
-
-        # class_a is always "vision" according to ImageBind
-        feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
-        feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
-        # class_b could be any modality
-        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
-        feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
-
+        # feats = self.model({ModalityType.VISION: data_a,ModalityType.TEXT: data_b}) 
+        # feats_a_tensor=feats[ModalityType.VISION]
+        # # class_b could be any modality
+        # feats_b_tensor = feats[ModalityType.TEXT]
+        
+        feats = [self.model({ModalityType.VISION: [data_a[i].unsqueeze(0)],ModalityType.TEXT: data_b })for i in range(data_a.shape[0]) ]
+        feats_a_tensor=torch.cat([dict_[ModalityType.VISION] for dict_ in feats],dim=0)
+        #feats_b_tensor=torch.cat([list(dict_[ModalityType.TEXT].values())[0] for dict_ in feats],dim=0)
+        feats_b_tensor=torch.cat([dict_[ModalityType.TEXT] for dict_ in feats],dim=0)
         if self.hparams.self_contrast:
             feats_a_b_tensor = torch.cat([feats_a_tensor.chunk(2)[0], feats_b_tensor], dim=0)
             feats_tensors = [feats_a_tensor, feats_a_b_tensor]
@@ -182,18 +191,19 @@ class ImageBindTrain(L.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         data_a, target = batch
-        data_a = [data_a]
+      #  data_a = [data_a]
         text = copy.deepcopy(test_dataset.text_list)
         data_b = data.load_and_transform_text(text, self.device)
         data_b = [data_b]
-
-        # class_a is always "vision" according to ImageBind
-        feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
-        feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
+        #data_a=[data_a]
+        
+        feats = [self.model({ModalityType.VISION: [data_a[i].unsqueeze(0)],ModalityType.TEXT: data_b })for i in range(data_a.shape[0]) ]
+        feats_a_tensor=torch.cat([dict_[ModalityType.VISION] for dict_ in feats],dim=0)
+        #feats_b_tensor=torch.cat([list(dict_[ModalityType.TEXT].values())[0] for dict_ in feats],dim=0)
+        feats_b_tensor=torch.cat([dict_[ModalityType.TEXT] for dict_ in feats],dim=0)
         # class_b could be any modality
-        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
-        feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
-
+        #feats_a_tensor = feats[ModalityType.VISION]
+        #feats_b_tensor = feats[ModalityType.TEXT]
         match_value = feats_a_tensor @ feats_b_tensor.T
 
         result = torch.softmax(match_value, dim=-1)
@@ -203,12 +213,14 @@ class ImageBindTrain(L.LightningModule):
         test_total = target.size(0)
         self.log("val" + "_acc_top1", test_correct / test_total, prog_bar=True,
                 on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
-
+        
 
     def on_validation_epoch_end(self):
         if self.hparams.lora:
             # Save LoRA checkpoint
-            LoRA.save_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=self.hparams.lora_checkpoint_dir)
+            
+            LoRA.save_lora_modality_trunks(self.model.modality_trunks_1, self.model.modality_trunks_2,checkpoint_dir=self.hparams.lora_checkpoint_dir)
+            #LoRA.save_lora_modality_trunks(self.model.modality_trunks_2, checkpoint_dir=self.hparams.lora_checkpoint_dir)
             # Save postprocessors & heads
             save_module(self.model.modality_postprocessors, module_name="postprocessors",
                         checkpoint_dir=self.hparams.lora_checkpoint_dir)
@@ -219,23 +231,28 @@ class ImageBindTrain(L.LightningModule):
             save_module(self.model.modality_heads, module_name="heads",
                         checkpoint_dir=self.hparams.lora_checkpoint_dir)
 
-
+    # def forward(self,x):
+    #     x=self.first_part_imagebind(x)
+    #     x=self.adapter(x)
+    #     x=self.second_part_imagebind(x)
+    #     return x
+    
 def parse_args():
     parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
     parser.add_argument("--seed", type=int, default=43, help="Random seed for reproducibility")
     parser.add_argument("--device", type=str, default="cuda:2", help="Device to use for training ('cpu' or 'cuda')")
     parser.add_argument("--datasets_dir", type=str, default="/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet",
                         help="Directory containing the datasets")
-    parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full",
+    parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full/lumen",
                         help="Directory to save the full model checkpoints")
-    parser.add_argument("--full_model_checkpointing", action="store_true", help="Save full model checkpoints")
+    parser.add_argument("--full_model_checkpointing",action="store_true", help="Save full model checkpoints")
     parser.add_argument("--loggers", type=str, nargs="+", choices=["tensorboard", "wandb", "comet", "mlflow"],
                         help="Loggers to use for logging")
     parser.add_argument("--loggers_dir", type=str, default="./.logs", help="Directory to save the logs")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode (Don't plot samples on start)")
 
     parser.add_argument("--max_epochs", type=int, default=50, help="Maximum number of epochs to train")
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training and validation")
+    parser.add_argument("--batch_size", type=int, default=4, help="Batch size for training and validation")
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
     parser.add_argument("--momentum_betas", nargs=2, type=float, default=[0.9, 0.95],
@@ -246,9 +263,8 @@ def parse_args():
     parser.add_argument("--self_contrast", action="store_true", help="Use self-contrast on the image modality")
 
     parser.add_argument("--lora", action="store_true", default=True,help="Use LoRA")
-    #parser.add_argument("--lora", action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/550_epochs_lora",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/lume_lora-666!!!",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
@@ -385,7 +401,7 @@ if __name__ == "__main__":
     #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
     
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[ 1], deterministic=True,
+                      devices=[1,2,3], deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
                       logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true')
 
