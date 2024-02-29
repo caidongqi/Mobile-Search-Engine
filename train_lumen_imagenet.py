@@ -72,25 +72,27 @@ class ImageBindTrain(L.LightningModule):
         self.save_hyperparameters()
         self.text_list = text_list
         # Load full pretrained ImageBind model
-        self.model = lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=1,vision_num_blocks_2=30,text_num_blocks=24)
+        self.model = lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=31,vision_num_blocks_2=1,text_num_blocks=24)
       
 
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
-                modality_preprocessor.requires_grad_(False)
+                modality_preprocessor.requires_grad_(True)
             for modality_trunk in self.model.modality_trunks_1.children():
-                modality_trunk.requires_grad_(False)
+                modality_trunk.requires_grad_(True)
             for modality_trunk in self.model.modality_trunks_2.children():
                 modality_trunk.requires_grad_(True)
             self.model.modality_trunks_1.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks_1, rank=lora_rank,
                                                                               layer_idxs=lora_layer_idxs,
                                                                               modality_names=lora_modality_names))
-            LoRA.load_lora_modality_trunks(self.model.modality_trunks_1, checkpoint_dir=lora_checkpoint_dir)
+            LoRA.load_lora_modality_trunks(self.model.modality_trunks_1, checkpoint_dir=lora_checkpoint_dir, postfix = "_trunk1_last")
             self.model.modality_trunks_2.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks_2, rank=lora_rank,
                                                                               layer_idxs=lora_layer_idxs,
                                                                               modality_names=lora_modality_names))
-            LoRA.load_lora_modality_trunks(self.model.modality_trunks_2, checkpoint_dir=lora_checkpoint_dir)
+            LoRA.load_lora_modality_trunks(self.model.modality_trunks_2, checkpoint_dir=lora_checkpoint_dir, postfix = "_trunk2_last")
             # Load postprocessors & heads
+            load_module(self.model.modality_postprocessors, module_name="preprocessors",
+                        checkpoint_dir=lora_checkpoint_dir)
             load_module(self.model.modality_postprocessors, module_name="postprocessors",
                         checkpoint_dir=lora_checkpoint_dir)
             load_module(self.model.modality_heads, module_name="heads",
@@ -218,10 +220,12 @@ class ImageBindTrain(L.LightningModule):
     def on_validation_epoch_end(self):
         if self.hparams.lora:
             # Save LoRA checkpoint
-            
-            LoRA.save_lora_modality_trunks(self.model.modality_trunks_1, self.model.modality_trunks_2,checkpoint_dir=self.hparams.lora_checkpoint_dir)
+            LoRA.save_lora_modality_trunks(self.model.modality_trunks_1,checkpoint_dir=self.hparams.lora_checkpoint_dir, postfix= "_trunk1_last")
+            LoRA.save_lora_modality_trunks(self.model.modality_trunks_2,checkpoint_dir=self.hparams.lora_checkpoint_dir, postfix= "_trunk2_last")
             #LoRA.save_lora_modality_trunks(self.model.modality_trunks_2, checkpoint_dir=self.hparams.lora_checkpoint_dir)
             # Save postprocessors & heads
+            save_module(self.model.modality_preprocessors, module_name="postprocessors",
+                        checkpoint_dir=self.hparams.lora_checkpoint_dir)
             save_module(self.model.modality_postprocessors, module_name="postprocessors",
                         checkpoint_dir=self.hparams.lora_checkpoint_dir)
             save_module(self.model.modality_heads, module_name="heads",
@@ -231,11 +235,6 @@ class ImageBindTrain(L.LightningModule):
             save_module(self.model.modality_heads, module_name="heads",
                         checkpoint_dir=self.hparams.lora_checkpoint_dir)
 
-    # def forward(self,x):
-    #     x=self.first_part_imagebind(x)
-    #     x=self.adapter(x)
-    #     x=self.second_part_imagebind(x)
-    #     return x
     
 def parse_args():
     parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
@@ -248,7 +247,7 @@ def parse_args():
     parser.add_argument("--full_model_checkpointing",action="store_true", help="Save full model checkpoints")
     parser.add_argument("--loggers", type=str, nargs="+", choices=["tensorboard", "wandb", "comet", "mlflow"],
                         help="Loggers to use for logging")
-    parser.add_argument("--loggers_dir", type=str, default="./.logs", help="Directory to save the logs")
+    parser.add_argument("--loggers_dir", type=str, default="./.logs/lumen", help="Directory to save the logs")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode (Don't plot samples on start)")
 
     parser.add_argument("--max_epochs", type=int, default=50, help="Maximum number of epochs to train")
@@ -264,7 +263,7 @@ def parse_args():
 
     parser.add_argument("--lora", action="store_true", default=True,help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/lume_lora-666_freeze!!!!!",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/exp_6",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
@@ -401,7 +400,7 @@ if __name__ == "__main__":
     #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
     
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[2], deterministic=True,
+                      devices=[4], deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
                       logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true')
 

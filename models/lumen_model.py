@@ -23,7 +23,8 @@ from models.multimodal_preprocessors import (AudioPreprocessor,
                                              TextPreprocessor,
                                              ThermalPreprocessor)
 from models.transformer import MultiheadAttention, SimpleTransformer
-
+from models.transformer1 import MultiheadAttention, SimpleTransformer1
+from models.transformer2 import MultiheadAttention, SimpleTransformer2
 ModalityType = SimpleNamespace(
     VISION="vision",
     TEXT="text",
@@ -459,7 +460,212 @@ class ImageBindModel(nn.Module):
         )
 
         return nn.ModuleDict(modality_heads)
+    
+    def _create_modality_trunks1(
+        self,
+        vision_embed_dim=1024,
+        vision_num_blocks=24,
+        vision_num_heads=16,
+        text_embed_dim=768,
+        text_num_blocks=12,
+        text_num_heads=12,
+        audio_embed_dim=768,
+        audio_num_blocks=12,
+        audio_num_heads=12,
+        audio_drop_path=0.0,
+        depth_embed_dim=768,
+        depth_num_blocks=12,
+        depth_num_heads=12,
+        depth_drop_path=0.0,
+        thermal_embed_dim=768,
+        thermal_num_blocks=12,
+        thermal_num_heads=12,
+        thermal_drop_path=0.0,
+        imu_embed_dim=512,
+        imu_num_blocks=6,
+        imu_num_heads=8,
+        imu_drop_path=0.7,
+    ):
+        def instantiate_trunk(
+            embed_dim, num_blocks, num_heads, pre_transformer_ln, add_bias_kv, drop_path
+        ):
+            return SimpleTransformer1(
+                embed_dim=embed_dim,
+                num_blocks=num_blocks,
+                ffn_dropout_rate=0.0,
+                drop_path_rate=drop_path,
+                attn_target=partial(
+                    MultiheadAttention,
+                    embed_dim=embed_dim,
+                    num_heads=num_heads,
+                    bias=True,
+                    add_bias_kv=add_bias_kv,
+                ),
+                pre_transformer_layer=nn.Sequential(
+                    nn.LayerNorm(embed_dim, eps=1e-6)
+                    if pre_transformer_ln
+                    else nn.Identity(),
+                    EinOpsRearrange("b l d -> l b d"),
+                ),
+                post_transformer_layer=EinOpsRearrange("l b d -> b l d"),
+            )
+        
+        modality_trunks = {}
+        modality_trunks[ModalityType.VISION] = instantiate_trunk(
+            vision_embed_dim,
+            vision_num_blocks,
+            vision_num_heads,
+            pre_transformer_ln=True,
+            add_bias_kv=False,
+            drop_path=0.0,
+        )
+        modality_trunks[ModalityType.TEXT] = instantiate_trunk(
+            text_embed_dim,
+            text_num_blocks,
+            text_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=False,
+            drop_path=0.0,
+        )
+        modality_trunks[ModalityType.AUDIO] = instantiate_trunk(
+            audio_embed_dim,
+            audio_num_blocks,
+            audio_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=audio_drop_path,
+        )
+        modality_trunks[ModalityType.DEPTH] = instantiate_trunk(
+            depth_embed_dim,
+            depth_num_blocks,
+            depth_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=depth_drop_path,
+        )
+        modality_trunks[ModalityType.THERMAL] = instantiate_trunk(
+            thermal_embed_dim,
+            thermal_num_blocks,
+            thermal_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=thermal_drop_path,
+        )
+        modality_trunks[ModalityType.IMU] = instantiate_trunk(
+            imu_embed_dim,
+            imu_num_blocks,
+            imu_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=imu_drop_path,
+        )
 
+        return nn.ModuleDict(modality_trunks)
+    
+    def _create_modality_trunks2(
+        self,
+        vision_embed_dim=1024,
+        vision_num_blocks=24,
+        vision_num_heads=16,
+        text_embed_dim=768,
+        text_num_blocks=12,
+        text_num_heads=12,
+        audio_embed_dim=768,
+        audio_num_blocks=12,
+        audio_num_heads=12,
+        audio_drop_path=0.0,
+        depth_embed_dim=768,
+        depth_num_blocks=12,
+        depth_num_heads=12,
+        depth_drop_path=0.0,
+        thermal_embed_dim=768,
+        thermal_num_blocks=12,
+        thermal_num_heads=12,
+        thermal_drop_path=0.0,
+        imu_embed_dim=512,
+        imu_num_blocks=6,
+        imu_num_heads=8,
+        imu_drop_path=0.7,
+    ):
+        def instantiate_trunk(
+            embed_dim, num_blocks, num_heads, pre_transformer_ln, add_bias_kv, drop_path
+        ):
+            return SimpleTransformer2(
+                embed_dim=embed_dim,
+                num_blocks=num_blocks,
+                ffn_dropout_rate=0.0,
+                drop_path_rate=drop_path,
+                attn_target=partial(
+                    MultiheadAttention,
+                    embed_dim=embed_dim,
+                    num_heads=num_heads,
+                    bias=True,
+                    add_bias_kv=add_bias_kv,
+                ),
+                pre_transformer_layer=nn.Sequential(
+                    nn.LayerNorm(embed_dim, eps=1e-6)
+                    if pre_transformer_ln
+                    else nn.Identity(),
+                    EinOpsRearrange("b l d -> l b d"),
+                ),
+                post_transformer_layer=EinOpsRearrange("l b d -> b l d"),
+            )
+        
+        modality_trunks = {}
+        modality_trunks[ModalityType.VISION] = instantiate_trunk(
+            vision_embed_dim,
+            vision_num_blocks,
+            vision_num_heads,
+            pre_transformer_ln=True,
+            add_bias_kv=False,
+            drop_path=0.0,
+        )
+        modality_trunks[ModalityType.TEXT] = instantiate_trunk(
+            text_embed_dim,
+            text_num_blocks,
+            text_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=False,
+            drop_path=0.0,
+        )
+        modality_trunks[ModalityType.AUDIO] = instantiate_trunk(
+            audio_embed_dim,
+            audio_num_blocks,
+            audio_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=audio_drop_path,
+        )
+        modality_trunks[ModalityType.DEPTH] = instantiate_trunk(
+            depth_embed_dim,
+            depth_num_blocks,
+            depth_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=depth_drop_path,
+        )
+        modality_trunks[ModalityType.THERMAL] = instantiate_trunk(
+            thermal_embed_dim,
+            thermal_num_blocks,
+            thermal_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=thermal_drop_path,
+        )
+        modality_trunks[ModalityType.IMU] = instantiate_trunk(
+            imu_embed_dim,
+            imu_num_blocks,
+            imu_num_heads,
+            pre_transformer_ln=False,
+            add_bias_kv=True,
+            drop_path=imu_drop_path,
+        )
+
+        return nn.ModuleDict(modality_trunks)
+    
+   
+    
+    
     def _create_modality_postprocessors(self, out_embed_dim):
         modality_postprocessors = {}
 
@@ -489,7 +695,7 @@ class ImageBindModel(nn.Module):
     def forward(self, inputs):
         outputs = {}
         for modality_key, modality_value in inputs.items():
-            modality_value=modality_value[0]
+            modality_value=modality_value
             reduce_list = (
                 modality_value[0].ndim >= 5
             )  # Audio and Video inputs consist of multiple clips

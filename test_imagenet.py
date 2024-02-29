@@ -7,12 +7,12 @@ import time
 import csv
 
 from models import imagebind_model
-from models import first_part_imagebind
-from models import second_part_imagebind
+from models import lumen_model
+from models import lumen6_model
 from models.imagebind_model import ModalityType, load_module
-from models.first_part_imagebind import ModalityType, load_module
-from models.second_part_imagebind import ModalityType, load_module
-from models import lora as LoRA
+from models.lumen6_model import ModalityType, load_module
+from models.lumen_model import ModalityType, load_module
+from models import lora_lumen as LoRA
 
 from pycocotools.coco import COCO
 from torchvision import transforms
@@ -29,11 +29,11 @@ import openpyxl
 logging.basicConfig(level=logging.INFO, force=True)
 import numpy as np
 print("test_imagebet")
-lora = False
+lora = True
 linear_probing = False
 #device="cpu"
 #device = "cuda:6" if torch.cuda.is_available() else "cpu"
-load_head_post_proc_finetuned = True
+load_head_post_proc_finetuned = False
 #imagenet_datadir = "/data/yx/ImageBind/.datasets/imagenet"
 imagenet_datadir = "/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet"
 coco_datadir="/data/air/pc/ImageBind/dataset/val2017/val2017"
@@ -41,7 +41,7 @@ test_coco="/data/air/pc/ImageBind/dataset/tempoimage"
 datadir1='/data/air/pc/Mobile-Search-Engine/datasets/imagenet-10'
 datadir2="/data/air/pc/i-Code/i-Code-V3/dataset/tempo-10"
 coco_annotation_file='/data/air/pc/ImageBind/dataset/annotations_trainval2017/annotations/instances_val2017.json'
-lora_dir = ''
+lora_dir = '/data/air/pc/Mobile-Search-Engine/.checkpoints/lora/exp_6'
 
 import argparse
 
@@ -52,7 +52,7 @@ parser = argparse.ArgumentParser(description="Your script description")
 #parser.add_argument("audio_num_blocks", type=int, help="Number of audio blocks")
 
 # parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
-parser.add_argument("--device", type=str, default="cuda:1", help="Device to use (cuda:2 or cpu)")
+parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
 parser.add_argument("--vision_num_blocks", default=32,type=int, help="Number of audio blocks")
 # 解析命令行参数
 args = parser.parse_args()
@@ -69,25 +69,39 @@ assert not (linear_probing and lora), \
 
 if lora and not load_head_post_proc_finetuned:
     # Hack: adjust lora_factor to the `max batch size used during training / temperature` to compensate missing norm
-    lora_factor = 12 / 0.07
+    lora_factor = 4 / 0.07
 else:
     # This assumes proper loading of all params but results in shift from original dist in case of LoRA
     lora_factor = 1
 # Instantiate model
-model=first_part_imagebind.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
+model=lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=31,vision_num_blocks_2=1)
 #model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
 
 
 if lora:
-    model.modality_trunks.update(
-        LoRA.apply_lora_modality_trunks(model.modality_trunks, rank=4,
-                                        layer_idxs={ModalityType.TEXT: [ 1, 2, 3, 4, 5, 6, 7, 8],
-                                                    ModalityType.VISION: [1, 2, 3, 4, 5, 6, 7, 8]},
-                                        modality_names=[ModalityType.TEXT, ModalityType.VISION]))
-
+    model.modality_trunks_1.update(LoRA.apply_lora_modality_trunks(model.modality_trunks_1, rank=4,
+                                                                              layer_idxs=None,
+                                                                              modality_names=[ModalityType.TEXT, ModalityType.VISION]))
     # Load LoRA params if found
-    LoRA.load_lora_modality_trunks(model.modality_trunks,
-                                   checkpoint_dir=lora_dir)
+    # #LoRA.load_lora_modality_trunks(model.modality_trunks_1,
+    #                                checkpoint_dir=lora_dir)
+    LoRA.load_lora_modality_trunks(model.modality_trunks_1, checkpoint_dir=lora_dir, postfix = "_trunk1_last")
+           
+    model.modality_trunks_2.update(LoRA.apply_lora_modality_trunks(model.modality_trunks_2, rank=4,
+                                                                              layer_idxs=None,
+                                                                              modality_names=[ModalityType.TEXT, ModalityType.VISION]))
+    # Load LoRA params if found
+    LoRA.load_lora_modality_trunks(model.modality_trunks_2, checkpoint_dir=lora_dir, postfix = "_trunk2_last")
+       
+    # model.modality_trunks.update(
+    #     LoRA.apply_lora_modality_trunks(model.modality_trunks, rank=4,
+    #                                     layer_idxs={ModalityType.TEXT: [ 1, 2, 3, 4, 5, 6, 7, 8],
+    #                                                 ModalityType.VISION: [1, 2, 3, 4, 5, 6, 7, 8]},
+    #                                     modality_names=[ModalityType.TEXT, ModalityType.VISION]))
+
+    # # Load LoRA params if found
+    # LoRA.load_lora_modality_trunks(model.modality_trunks,
+    #                                checkpoint_dir=lora_dir)
 
     if load_head_post_proc_finetuned:
         # Load postprocessors & heads
@@ -168,12 +182,12 @@ def run_inference():
                     counts_rs[counts_r] = np.concatenate([counts_rs[counts_r], [int(any(top_indices[i] == target[i].to(predicted.device))) for i in range(len(target))]])
 
             logging.info(f"batch_idx = {batch_idx}, test_correct = {np.sum(counts_rs['counts_r1'] == 1)/len(counts_rs['counts_r1'])}, test_total = {np.sum(counts_rs['counts_r5'] == 1)/len(counts_rs['counts_r1'])}, Accuracy = {np.sum(counts_rs['counts_r10'] == 1)/len(counts_rs['counts_r1'])}")
-            if(np.sum(counts_rs['counts_r1'] == 1)):
-                print(f"batch_idx不为0:{imgs}")
-                embed=embeddings[ModalityType.VISION]
-                print(embed)
-                torch.save(embed, "output_tensor.pt")
-                return imgs
+            # if(np.sum(counts_rs['counts_r1'] == 1)):
+            #     print(f"batch_idx不为0:{imgs}")
+            #     embed=embeddings[ModalityType.VISION]
+            #     print(embed)
+            #     torch.save(embed, "output_tensor.pt")
+            #     return imgs
             # for i in range(top_k_indices.size(0)):
             #     row_tensor1 = top_k_indices[i, :]
             #     row_tensor1= torch.add(row_tensor1, 1)
@@ -201,37 +215,37 @@ def run_inference():
         lists.append(counts)
     
     #将时间记录下来
-    v_block=len(model.modality_trunks["vision"].blocks)
-    t_block=len(model.modality_trunks["text"].blocks)
-    a_block=len(model.modality_trunks["audio"].blocks)
-    i_block=len(model.modality_trunks["imu"].blocks)
+    # v_block=len(model.modality_trunks["vision"].blocks)
+    # t_block=len(model.modality_trunks["text"].blocks)
+    # a_block=len(model.modality_trunks["audio"].blocks)
+    # i_block=len(model.modality_trunks["imu"].blocks)
 
-    import openpyxl
-    r1=[str(v_block),str(t_block),str(a_block),str(i_block)]
-    list1=['vision层数', 'text层数', 'audio层数', 'imu层数']
-    list=list1+lists
-    results=r1+results
-    # 数据
-    data = [
-         list,results
-    ]
+    # import openpyxl
+    # r1=[str(v_block),str(t_block),str(a_block),str(i_block)]
+    # list1=['vision层数', 'text层数', 'audio层数', 'imu层数']
+    # list=list1+lists
+    # results=r1+results
+    # # 数据
+    # data = [
+    #      list,results
+    # ]
     
-    # 打开Excel文件
-    workbook = openpyxl.load_workbook('topk.xlsx')
+    # # 打开Excel文件
+    # workbook = openpyxl.load_workbook('topk.xlsx')
 
-    # 选择或创建工作表
-    sheet_name = 'Sheet1'  # 请根据实际情况修改工作表名称
-    sheet = workbook[sheet_name] if sheet_name in workbook.sheetnames else workbook.create_sheet(sheet_name)
+    # # 选择或创建工作表
+    # sheet_name = 'Sheet1'  # 请根据实际情况修改工作表名称
+    # sheet = workbook[sheet_name] if sheet_name in workbook.sheetnames else workbook.create_sheet(sheet_name)
 
-    # 确定插入的起始行
-    start_row = sheet.max_row + 1
+    # # 确定插入的起始行
+    # start_row = sheet.max_row + 1
 
-    # 将数据插入Excel
-    for row in data:
-        sheet.append(row)
+    # # 将数据插入Excel
+    # for row in data:
+    #     sheet.append(row)
 
-    # 保存修改后的Excel文件
-    workbook.save('topk.xlsx')
+    # # 保存修改后的Excel文件
+    # workbook.save('topk.xlsx')
 
     
     # # 写入CSV文件

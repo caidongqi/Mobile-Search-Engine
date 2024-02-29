@@ -77,7 +77,7 @@ class ImageBindTrain(L.LightningModule):
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
             for modality_trunk in self.model.modality_trunks.children():
-                modality_trunk.requires_grad_(True)
+                modality_trunk.requires_grad_(False)
                 
             self.model.modality_trunks.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks, rank=lora_rank,
                                                                               layer_idxs=lora_layer_idxs,
@@ -248,7 +248,7 @@ def parse_args():
     parser.add_argument("--lora", action="store_true", default=True,help="Use LoRA")
     #parser.add_argument("--lora", action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/550_epochs_lora",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/train_imagenet0226",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
     
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[ 1], deterministic=True,
+                      devices=[3], deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
                       logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true')
 

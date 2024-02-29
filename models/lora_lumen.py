@@ -40,38 +40,32 @@ def apply_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer], ra
 #         except FileNotFoundError:
 #             logging.warning(f"Could not save LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
 
-def save_lora_modality_trunks(modality_trunks_1: Dict[str, SimpleTransformer],modality_trunks_2: Dict[str, SimpleTransformer],
+# def save_lora_modality_trunks(modality_trunks_1: Dict[str, SimpleTransformer],modality_trunks_2: Dict[str, SimpleTransformer],
+#                               checkpoint_dir: str = "./.checkpoints/lora", postfix: str = "_last", extension: str = "safetensors"):
+#     dict={}
+#     for (modality_name_1, modality_trunk_1), (modality_name_2, modality_trunk_2) in zip(modality_trunks_1.items(), modality_trunks_2.items()):  
+#         try:  
+#             if isinstance(modality_trunk_1, LoRA_SimpleTransformer):  
+#                 dict = modality_trunk_1.save_lora_parameters()  
+#                 logging.info(f"Saved LoRA parameters for modality {modality_name_1} to {checkpoint_dir}.")  
+                
+#             if isinstance(modality_trunk_2, LoRA_SimpleTransformer):  
+#                 modality_trunk_2.save_lora_parameters2(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name_2}{postfix}.{extension}"), num1=len(modality_trunk_1.w_As), merged_dict=dict)  
+#                 logging.info(f"Saved LoRA parameters for modality {modality_name_2} to {checkpoint_dir}.")  
+                
+#         except FileNotFoundError:  
+#             logging.warning(f"Could not save LoRA parameters for modalities {modality_name_1} and/or {modality_name_2} to {checkpoint_dir}.")  
+
+def save_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer],
                               checkpoint_dir: str = "./.checkpoints/lora", postfix: str = "_last", extension: str = "safetensors"):
-    dict={}
-    for (modality_name_1, modality_trunk_1), (modality_name_2, modality_trunk_2) in zip(modality_trunks_1.items(), modality_trunks_2.items()):  
-        try:  
-            if isinstance(modality_trunk_1, LoRA_SimpleTransformer):  
-                dict = modality_trunk_1.save_lora_parameters()  
-                logging.info(f"Saved LoRA parameters for modality {modality_name_1} to {checkpoint_dir}.")  
-                
-            if isinstance(modality_trunk_2, LoRA_SimpleTransformer):  
-                modality_trunk_2.save_lora_parameters2(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name_2}{postfix}.{extension}"), num1=len(modality_trunk_1.w_As), merged_dict=dict)  
-                logging.info(f"Saved LoRA parameters for modality {modality_name_2} to {checkpoint_dir}.")  
-                
-        except FileNotFoundError:  
-            logging.warning(f"Could not save LoRA parameters for modalities {modality_name_1} and/or {modality_name_2} to {checkpoint_dir}.")  
-#     # for modality_name, modality_trunk in modality_trunks_1.items():
-    #     try:
-    #         if isinstance(modality_trunk, LoRA_SimpleTransformer):
-    #             dict=modality_trunk.save_lora_parameters()
-    #             #modality_trunk.save_lora_parameters2(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"),num1=len(modality_trunk.w_As),merged_dict=dict)
-    #             logging.info(f"Saved LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
-    #     except FileNotFoundError:
-    #         logging.warning(f"Could not save LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
-    
-    # for modality_name, modality_trunk in modality_trunks_2.items():
-    #     try:
-    #         if isinstance(modality_trunk, LoRA_SimpleTransformer):
-    #             #dict=modality_trunk.save_lora_parameters(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
-    #             modality_trunk.save_lora_parameters2(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"),num1=len(modality_trunk.w_As),merged_dict=dict)
-    #             logging.info(f"Saved LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
-    #     except FileNotFoundError:
-    #         logging.warning(f"Could not save LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
+    for modality_name, modality_trunk in modality_trunks.items():
+        try:
+            if isinstance(modality_trunk, LoRA_SimpleTransformer):
+                modality_trunk.save_lora_parameters(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
+                logging.info(f"Saved LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
+        except FileNotFoundError:
+            logging.warning(f"Could not save LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
+
 
 def load_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer],
                               checkpoint_dir: str = "./.checkpoints/lora", postfix: str = "_last", extension: str = "safetensors"):
@@ -150,22 +144,40 @@ class LoRA_SimpleTransformer(nn.Module):
             self.reset_parameters()
         self.lora_model = transformer_model
 
-    def save_lora_parameters(self) -> dict:
+    # def save_lora_parameters(self) -> dict:
+    #     r"""Only safetensors is supported now.
+
+    #     pip install safetensors if you do not have one installed yet.
+    #     """
+
+    #     #assert filename.endswith(".safetensors")
+
+    #     num_layer = len(self.w_As)  # actually, it is half
+    #     a_tensors = {f"w_a_{i:03d}": self.w_As[i].weight for i in range(num_layer)}
+    #     b_tensors = {f"w_b_{i:03d}": self.w_Bs[i].weight for i in range(num_layer)}
+        
+    #     merged_dict = {**a_tensors, **b_tensors}
+    #     # os.makedirs(os.path.dirname(filename),exist_ok=True)
+    #     # save_file(merged_dict, filename)
+    #     return merged_dict
+    
+    def save_lora_parameters(self,filename:str) -> None:
         r"""Only safetensors is supported now.
 
         pip install safetensors if you do not have one installed yet.
         """
 
-        #assert filename.endswith(".safetensors")
+        assert filename.endswith(".safetensors")
 
         num_layer = len(self.w_As)  # actually, it is half
         a_tensors = {f"w_a_{i:03d}": self.w_As[i].weight for i in range(num_layer)}
         b_tensors = {f"w_b_{i:03d}": self.w_Bs[i].weight for i in range(num_layer)}
         
         merged_dict = {**a_tensors, **b_tensors}
-        # os.makedirs(os.path.dirname(filename),exist_ok=True)
-        # save_file(merged_dict, filename)
+        os.makedirs(os.path.dirname(filename),exist_ok=True)
+        save_file(merged_dict, filename)
         return merged_dict
+    
     
     def save_lora_parameters2(self,filename: str,num1=31,merged_dict=[]) -> None:
         r"""Only safetensors is supported now.
