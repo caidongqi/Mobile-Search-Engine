@@ -147,18 +147,16 @@ def run_inference():
                 ModalityType.VISION: x,
                 ModalityType.TEXT: data.load_and_transform_text(test_ds.text_list, device),
             }
-            embeddings = model(inputs)
-            #reshaped_data_v = embeddings[ModalityType.VISION].view(1, 3, 224, 224)
-            #embeddings[ModalityType.VISION]=embeddings[ModalityType.VISION].view(-1,3*224*224)
-            reshape_vision=adapter_model(embeddings[ModalityType.VISION])
-            reshape_text=adapter_model(embeddings[ModalityType.TEXT])
+            embeddings = model(inputs)#经过imagebind第一部分
+            #有问题
+            reshape_vision=adapter_model(embeddings[ModalityType.VISION])#经过adapter
+            reshape_text=adapter_model(embeddings[ModalityType.TEXT])#经过adapter
             reshape_vision = reshape_vision.expand_as(reshape_text)  
-            concat_embedding = reshape_vision + reshape_text 
+            concat_embedding = reshape_vision + reshape_text #concat后的embedding
             inputs_2 = {
                 ModalityType.VISION: concat_embedding
             }
-            result_vision=model_2(inputs_2)+reshape_vision
-            # result_text=second_part_imagebind(reshape_text)
+            result_vision=model_2(inputs_2)+reshape_vision#经过imagebind的第二部分
             match_value_1 = embeddings[ModalityType.VISION]@result_vision['vision'].T * (lora_factor if lora else 1)
             print(match_value_1.shape)
             # num=5

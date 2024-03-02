@@ -59,7 +59,7 @@ class ContrastiveTransformations:
 class ImageBindTrain(L.LightningModule):
     def __init__(self, lr=5e-4, weight_decay=1e-4, max_epochs=500, batch_size=32, num_workers=4, seed=42, 
                  self_contrast=False, temperature=0.07,  momentum_betas=(0.9, 0.95), 
-                 lora=False, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
+                 lora=True, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
                  lora_layer_idxs=None, lora_modality_names=None,
                  linear_probing=False, text_list=[]
                  ):
@@ -224,7 +224,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
     parser.add_argument("--seed", type=int, default=43, help="Random seed for reproducibility")
     parser.add_argument("--device", type=str, default="cuda:2", help="Device to use for training ('cpu' or 'cuda')")
-    parser.add_argument("--datasets_dir", type=str, default="/data/yx/ImageBind/.datasets/imagenet",
+    parser.add_argument("--datasets_dir", type=str, default="/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet",
                         help="Directory containing the datasets")
     parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full",
                         help="Directory to save the full model checkpoints")
@@ -234,8 +234,8 @@ def parse_args():
     parser.add_argument("--loggers_dir", type=str, default="./.logs", help="Directory to save the logs")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode (Don't plot samples on start)")
 
-    parser.add_argument("--max_epochs", type=int, default=500, help="Maximum number of epochs to train")
-    parser.add_argument("--batch_size", type=int, default=12, help="Batch size for training and validation")
+    parser.add_argument("--max_epochs", type=int, default=50, help="Maximum number of epochs to train")
+    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training and validation")
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
     parser.add_argument("--momentum_betas", nargs=2, type=float, default=[0.9, 0.95],
@@ -245,9 +245,10 @@ def parse_args():
     parser.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     parser.add_argument("--self_contrast", action="store_true", help="Use self-contrast on the image modality")
 
-    parser.add_argument("--lora", action="store_true", help="Use LoRA")
+    parser.add_argument("--lora", action="store_true", default=True,help="Use LoRA")
+    #parser.add_argument("--lora", action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/550_epochs_lora",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
@@ -384,7 +385,7 @@ if __name__ == "__main__":
     #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
     
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[0,1,2,3,4,5,6,7], deterministic=True,
+                      devices=[3], deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
                       logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true')
 

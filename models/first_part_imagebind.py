@@ -460,9 +460,12 @@ class ImageBindModel(nn.Module):
                 trunk_inputs = modality_value["trunk"]
                 head_inputs = modality_value["head"]
                 modality_value = self.modality_trunks[modality_key](**trunk_inputs)
+                
                 modality_value = self.modality_heads[modality_key](
                     modality_value, **head_inputs
                 )
+                
+                
                 # modality_value = self.modality_postprocessors[modality_key](
                 #     modality_value
                 # )
@@ -472,7 +475,7 @@ class ImageBindModel(nn.Module):
                     modality_value = modality_value.mean(dim=1)
 
                 outputs[modality_key] = modality_value
-
+                
         return outputs
 
 
