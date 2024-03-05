@@ -8,7 +8,7 @@ import csv
 
 from models import imagebind_model
 from models import lumen_model
-from models import lumen6_model_test
+from models import lumen6_model
 from models.imagebind_model import ModalityType, load_module
 from models.lumen6_model_test import ModalityType, load_module
 from models.lumen_model import ModalityType, load_module
@@ -30,13 +30,9 @@ logging.basicConfig(level=logging.INFO, force=True)
 import numpy as np
 print("test_imagebet")
 lora = True
-lora = True
 linear_probing = False
 #device="cpu"
 #device = "cuda:6" if torch.cuda.is_available() else "cpu"
-load_head_post_proc_finetuned = False
-#imagenet_datadir = "/data/yx/ImageBind/.datasets/imagenet"
-imagenet_datadir = "/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet"
 load_head_post_proc_finetuned = False
 #imagenet_datadir = "/data/yx/ImageBind/.datasets/imagenet"
 imagenet_datadir = "/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet"
@@ -45,8 +41,8 @@ test_coco="/data/air/pc/ImageBind/dataset/tempoimage"
 datadir1='/data/air/pc/Mobile-Search-Engine/datasets/imagenet-10'
 datadir2="/data/air/pc/i-Code/i-Code-V3/dataset/tempo-10"
 coco_annotation_file='/data/air/pc/ImageBind/dataset/annotations_trainval2017/annotations/instances_val2017.json'
-lora_dir = '/data/air/pc/Mobile-Search-Engine/.checkpoints/lora/exp_6'
-lora_dir = '/data/air/pc/Mobile-Search-Engine/.checkpoints/lora/exp_6'
+#lora_dir = '/data/air/pc/Mobile-Search-Engine/.checkpoints/lora/exp_6'
+lora_dir = '/data/air/pc/Mobile-Search-Engine/.checkpoints/lora31-1'
 
 import argparse
 
@@ -57,8 +53,6 @@ parser = argparse.ArgumentParser(description="Your script description")
 #parser.add_argument("audio_num_blocks", type=int, help="Number of audio blocks")
 
 # parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
-parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
-parser.add_argument("--vision_num_blocks", default=32,type=int, help="Number of audio blocks")
 parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
 parser.add_argument("--vision_num_blocks", default=32,type=int, help="Number of audio blocks")
 # 解析命令行参数
@@ -77,29 +71,33 @@ assert not (linear_probing and lora), \
 if lora and not load_head_post_proc_finetuned:
     # Hack: adjust lora_factor to the `max batch size used during training / temperature` to compensate missing norm
     lora_factor = 4 / 0.07
-    lora_factor = 4 / 0.07
 else:
     # This assumes proper loading of all params but results in shift from original dist in case of LoRA
     lora_factor = 1
 # Instantiate model
-model=lumen6_model_test.imagebind_huge(pretrained=True,vision_num_blocks_1=31,vision_num_blocks_2=1)
+model=lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=31,vision_num_blocks_2=1)
 #model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
 
 
 if lora:
-    model.modality_trunks_1.update(LoRA.apply_lora_modality_trunks(model.modality_trunks_1, rank=4,
+    # model.modality_trunks_1.update(LoRA.apply_lora_modality_trunks(model.modality_trunks_1, rank=4,
+    #                                                                           layer_idxs=None,
+    #                                                                           modality_names=[ModalityType.TEXT, ModalityType.VISION]))
+    model.modality_trunks.update(LoRA.apply_lora_modality_trunks(model.modality_trunks, rank=4,
                                                                               layer_idxs=None,
                                                                               modality_names=[ModalityType.TEXT, ModalityType.VISION]))
+           
     # Load LoRA params if found
     # #LoRA.load_lora_modality_trunks(model.modality_trunks_1,
     #                                checkpoint_dir=lora_dir)
-    LoRA.load_lora_modality_trunks(model.modality_trunks_1, checkpoint_dir=lora_dir, postfix = "_trunk1_last")
-           
-    model.modality_trunks_2.update(LoRA.apply_lora_modality_trunks(model.modality_trunks_2, rank=4,
-                                                                              layer_idxs=None,
-                                                                              modality_names=[ModalityType.TEXT, ModalityType.VISION]))
-    # Load LoRA params if found
-    LoRA.load_lora_modality_trunks(model.modality_trunks_2, checkpoint_dir=lora_dir, postfix = "_trunk2_last")
+    #LoRA.load_lora_modality_trunks(model.modality_trunks_1, checkpoint_dir=lora_dir, postfix = "_trunk1_last")
+    LoRA.load_lora_modality_trunks(model.modality_trunks, checkpoint_dir=lora_dir, postfix = "_trunk_last")
+                   
+    # model.modality_trunks_2.update(LoRA.apply_lora_modality_trunks(model.modality_trunks_2, rank=4,
+    #                                                                           layer_idxs=None,
+    #                                                                           modality_names=[ModalityType.TEXT, ModalityType.VISION]))
+    # # Load LoRA params if found
+    # LoRA.load_lora_modality_trunks(model.modality_trunks_2, checkpoint_dir=lora_dir, postfix = "_trunk2_last")
        
     # model.modality_trunks.update(
     #     LoRA.apply_lora_modality_trunks(model.modality_trunks, rank=4,

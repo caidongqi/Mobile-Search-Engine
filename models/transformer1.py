@@ -12,12 +12,14 @@
 
 
 from functools import partial
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional,Dict
 
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, trunc_normal_
+from models.transformer2 import MultiheadAttention, SimpleTransformer2
+
 
 
 class Attention(nn.Module):
@@ -176,10 +178,10 @@ _LAYER_NORM = partial(nn.LayerNorm, eps=1e-6)
 class SimpleTransformer1(nn.Module):
     def __init__(
         self,
+        trunks: Dict[str, SimpleTransformer2],
         attn_target: Callable,
         embed_dim: int,
-        num_blocks1: int,
-        num_blocks2: int,
+        num_blocks: int,
         block: Callable = BlockWithMasking,
         pre_transformer_layer: Optional[Callable] = None,
         post_transformer_layer: Optional[Callable] = None,
@@ -191,6 +193,7 @@ class SimpleTransformer1(nn.Module):
         layer_scale_type: Optional[str] = None,  # from cait; possible values are None, "per_channel", "scalar"
         layer_scale_init_value: float = 1e-4,  # from cait; float
         weight_init_style: str = "jax",  # possible values jax or pytorch
+        
     ):
         """
         Simple Transformer with the following features
@@ -201,14 +204,15 @@ class SimpleTransformer1(nn.Module):
         5. Makes few assumptions about the input except that it is a Tensor
         """
         super().__init__()
+        self.vision_trunks=trunks
         self.pre_transformer_layer = pre_transformer_layer
         if drop_path_type == "progressive":
-            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, num_blocks1)]
+            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, num_blocks)]
         elif drop_path_type == "uniform":
-            dpr = [drop_path_rate for i in range(num_blocks1)]
+            dpr = [drop_path_rate for i in range(num_blocks)]
         else:
             raise ValueError(f"Unknown drop_path_type: {drop_path_type}")
-        
+
         self.blocks = nn.Sequential(
             *[
                 block(
@@ -221,33 +225,9 @@ class SimpleTransformer1(nn.Module):
                     layer_scale_type=layer_scale_type,
                     layer_scale_init_value=layer_scale_init_value,
                 )
-                for i in range(num_blocks1)
+                for i in range(num_blocks)
             ]
         )
-        
-        
-        if drop_path_type == "progressive":
-            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, num_blocks2)]
-        elif drop_path_type == "uniform":
-            dpr = [drop_path_rate for i in range(num_blocks2)]
-        else:
-            raise ValueError(f"Unknown drop_path_type: {drop_path_type}")
-
-        # self.blocks2 = nn.Sequential(
-        #     *[
-        #         block(
-        #             dim=embed_dim,
-        #             attn_target=attn_target,
-        #             mlp_ratio=mlp_ratio,
-        #             ffn_dropout_rate=ffn_dropout_rate,
-        #             drop_path=dpr[i],
-        #             norm_layer=norm_layer,
-        #             layer_scale_type=layer_scale_type,
-        #             layer_scale_init_value=layer_scale_init_value,
-        #         )
-        #         for i in range(num_blocks2)
-        #     ]
-        # )
         self.post_transformer_layer = post_transformer_layer
         self.weight_init_style = weight_init_style
         self.apply(self._init_weights)
@@ -288,7 +268,7 @@ class SimpleTransformer1(nn.Module):
         if use_checkpoint and checkpoint_blk_ids is None:
             checkpoint_blk_ids = [
                 blk_id
-                for blk_id in range(len(self.blocks1))
+                for blk_id in range(len(self.blocks))
                 if blk_id % checkpoint_every_n == 0
             ]
         if checkpoint_blk_ids:
@@ -300,13 +280,7 @@ class SimpleTransformer1(nn.Module):
                 )
             else:
                 tokens = blk(tokens, attn_mask=attn_mask)
-        # for blk_id, blk in enumerate(self.blocks2):
-        #     if use_checkpoint and blk_id in checkpoint_blk_ids:
-        #         tokens = checkpoint.checkpoint(
-        #             blk, tokens, attn_mask, use_reentrant=False
-        #         )
-        #     else:
-        #         tokens = blk(tokens, attn_mask=attn_mask)
+        vision_embedding=self.vision_trunks.get_trunk1()
         if self.post_transformer_layer:
             tokens = self.post_transformer_layer(tokens)
         return tokens

@@ -17,8 +17,12 @@ from safetensors.torch import save_file
 from torch import Tensor
 from torch.nn.parameter import Parameter
 
-from models.transformer import SimpleTransformer
+torch.autograd.set_detect_anomaly(True)
 
+# 其他代码
+
+from models.transformer import SimpleTransformer
+from models.transformer2 import SimpleTransformer2
 
 def apply_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer], rank: int,
                                layer_idxs: Optional[Dict[SimpleNamespace, List[int]]] = None,
@@ -68,12 +72,13 @@ def save_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer],
         try:
             if isinstance(modality_trunk, (LoRA_SimpleTransformer2 if modality_name == 'vision' else LoRA_SimpleTransformer)):
                 if modality_name=='vision':
-                    postfix="_block1"
+                    postfix="_block1_last"
                     modality_trunk.save_lora_parameters(modality_trunk.w_As1,modality_trunk.w_Bs1,os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
-                    postfix="_block2"
+                    postfix="_block2_last"
                     modality_trunk.save_lora_parameters(modality_trunk.w_As2,modality_trunk.w_Bs2,os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
                 
                 else:
+                    postfix="_last"
                     modality_trunk.save_lora_parameters(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
                     logging.info(f"Saved LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
                     
@@ -88,15 +93,16 @@ def load_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer],
         try:
             if isinstance(modality_trunk, (LoRA_SimpleTransformer2 if modality_name == 'vision' else LoRA_SimpleTransformer)):
                 if modality_name=='vision':
-                    postfix="_block1"
+                    postfix="_block1_last"
                     modality_trunk.load_lora_parameters(modality_trunk.w_As1,modality_trunk.w_Bs1,os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
                     logging.info(f"Loaded LoRA parameters for modality {modality_name} {postfix}from {checkpoint_dir}.")
        
-                    postfix="_block2"
+                    postfix="_block2_last"
                     modality_trunk.load_lora_parameters(modality_trunk.w_As2,modality_trunk.w_Bs2,os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
                     logging.info(f"Loaded LoRA parameters for modality {modality_name}{postfix} from {checkpoint_dir}.")
        
                 else:
+                   postfix="_last"
                    modality_trunk.load_lora_parameters(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
                    logging.info(f"Loaded LoRA parameters for modality {modality_name} from {checkpoint_dir}.")
         except FileNotFoundError:
@@ -282,7 +288,7 @@ class LoRA_SimpleTransformer2(nn.Module):
         torch.Size([1, 1000])
     """
 
-    def __init__(self, transformer_model: SimpleTransformer, rank: int, lora_layer_idxs: Optional[List[int]] = None):
+    def __init__(self, transformer_model: SimpleTransformer2, rank: int, lora_layer_idxs: Optional[List[int]] = None):
         super(LoRA_SimpleTransformer2, self).__init__()
 
         assert rank > 0
@@ -320,10 +326,6 @@ class LoRA_SimpleTransformer2(nn.Module):
         self.w_As2 = []  # These are linear layers
         self.w_Bs2 = []
 
-        # lets freeze first
-        for param in transformer_model.parameters():
-            param.requires_grad = False
-
         # Here, we do the surgery
         for t_layer_idx, blk in enumerate(transformer_model.blocks_2):
             # If we only want few lora layer instead of all
@@ -359,22 +361,22 @@ class LoRA_SimpleTransformer2(nn.Module):
         save_file(merged_dict, filename)
         return merged_dict
     
-    def save_lora_parameters2(self,filename: str,num1=31,merged_dict=[]) -> None:
-        r"""Only safetensors is supported now.
+    # def save_lora_parameters2(self,filename: str,num1=31,merged_dict=[]) -> None:
+    #     r"""Only safetensors is supported now.
 
-        pip install safetensors if you do not have one installed yet.
-        """
+    #     pip install safetensors if you do not have one installed yet.
+    #     """
 
-        assert filename.endswith(".safetensors")
+    #     assert filename.endswith(".safetensors")
 
-        num_layer = len(self.w_As)  # actually, it is half
-        a_tensors = {f"w_a_{i+num1:03d}": self.w_As[i].weight for i in range(num_layer)}
-        b_tensors = {f"w_b_{i+num1:03d}": self.w_Bs[i].weight for i in range(num_layer)}
+    #     num_layer = len(self.w_As)  # actually, it is half
+    #     a_tensors = {f"w_a_{i+num1:03d}": self.w_As[i].weight for i in range(num_layer)}
+    #     b_tensors = {f"w_b_{i+num1:03d}": self.w_Bs[i].weight for i in range(num_layer)}
         
-        merged_dict.update(a_tensors)
-        merged_dict.update(b_tensors)
-        os.makedirs(os.path.dirname(filename),exist_ok=True)
-        save_file(merged_dict, filename)
+    #     merged_dict.update(a_tensors)
+    #     merged_dict.update(b_tensors)
+    #     os.makedirs(os.path.dirname(filename),exist_ok=True)
+    #     save_file(merged_dict, filename)
         
     def load_lora_parameters(self, w_As,w_Bs,filename: str) -> None:
         r"""Only safetensors is supported now.

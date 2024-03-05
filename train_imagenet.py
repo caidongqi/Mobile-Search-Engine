@@ -60,7 +60,7 @@ class ImageBindTrain(L.LightningModule):
     def __init__(self, lr=5e-4, weight_decay=1e-4, max_epochs=500, batch_size=32, num_workers=4, seed=42, 
                  self_contrast=False, temperature=0.07,  momentum_betas=(0.9, 0.95), 
                  lora=True, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
-                 lora=True, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
+                 
                  lora_layer_idxs=None, lora_modality_names=None,
                  linear_probing=False, text_list=[]
                  ):

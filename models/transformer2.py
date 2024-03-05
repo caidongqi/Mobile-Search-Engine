@@ -15,6 +15,13 @@ from functools import partial
 from typing import Callable, List, Optional
 
 import torch
+
+
+# 在需要的地方启用异常检测模式
+torch.autograd.set_detect_anomaly(True)
+
+# 其他代码
+
 import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, trunc_normal_
@@ -210,7 +217,9 @@ class SimpleTransformer2(nn.Module):
             dpr = [drop_path_rate for i in range(num_blocks)]
         else:
             raise ValueError(f"Unknown drop_path_type: {drop_path_type}")
-
+        
+        self.trunk1_embedding=torch.Tensor()
+        
         self.blocks = nn.Sequential(
             *[
                 block(
@@ -231,18 +240,13 @@ class SimpleTransformer2(nn.Module):
 
         # 创建包含后 m 层的 nn.Sequential
         self.blocks_2 = nn.Sequential(*self.blocks[num_blocks1:])
-
-        # 复制原始 self.blocks 的前 n 层和后 m 层到新的 nn.Sequential
-        for i, block_n in enumerate(self.blocks_1):
-            block_n.load_state_dict(self.blocks[i].state_dict())
-
-        for i, block_m in enumerate(self.blocks_2):
-            block_m.load_state_dict(self.blocks[num_blocks1 + i].state_dict())
+        self.num_blocks1=num_blocks1
+        
 
         self.post_transformer_layer = post_transformer_layer
         self.weight_init_style = weight_init_style
         self.apply(self._init_weights)
-
+    
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
             if self.weight_init_style == "jax":
@@ -257,7 +261,19 @@ class SimpleTransformer2(nn.Module):
         elif isinstance(m, (nn.LayerNorm)):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+    
+    def init_block(self):
+        for i, block_n in enumerate(self.blocks_1):
+            block_n.load_state_dict(self.blocks[i].state_dict())
 
+        for i, block_m in enumerate(self.blocks_2):
+            block_m.load_state_dict(self.blocks[self.num_blocks1 + i].state_dict())
+    
+    def get_trunk1(
+        self):
+         
+        return self.trunk1_embedding
+    
     def forward(
         self,
         tokens: torch.Tensor,
@@ -274,6 +290,8 @@ class SimpleTransformer2(nn.Module):
         Output
         - x: data of shape N x L x D (or L x N x D depending on the attention implementation)
         """
+        # 复制原始 self.blocks 的前 n 层和后 m 层到新的 nn.Sequential
+        
         if self.pre_transformer_layer:
             tokens = self.pre_transformer_layer(tokens)
         if use_checkpoint and checkpoint_blk_ids is None:
@@ -291,6 +309,7 @@ class SimpleTransformer2(nn.Module):
                 )
             else:
                 tokens = blk(tokens, attn_mask=attn_mask)
+        self.trunk1_embedding=tokens
         for blk_id, blk in enumerate(self.blocks_2):
             if use_checkpoint and blk_id in checkpoint_blk_ids:
                 tokens = checkpoint.checkpoint(

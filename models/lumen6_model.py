@@ -9,8 +9,12 @@ import os
 from functools import partial
 from types import SimpleNamespace
 from typing import Dict
-
 import torch
+
+# 在需要的地方启用异常检测模式
+torch.autograd.set_detect_anomaly(True)
+
+
 import torch.nn as nn
 
 from models.helpers import (EinOpsRearrange, LearnableLogitScaling, Normalize,
@@ -318,7 +322,8 @@ class ImageBindModel(nn.Module):
         def instantiate_trunk(
             embed_dim, num_blocks, num_heads, pre_transformer_ln, add_bias_kv, drop_path
         ):
-            return SimpleTransformer(
+            return SimpleTransformer1(
+                trunks=modality_trunks[ModalityType.VISION],
                 embed_dim=embed_dim,
                 num_blocks=num_blocks,
                 ffn_dropout_rate=0.0,
@@ -499,7 +504,7 @@ class ImageBindModel(nn.Module):
     def forward(self, inputs):
         outputs = {}
         for modality_key, modality_value in inputs.items():
-            modality_value=modality_value[0]
+            #modality_value=modality_value[0]
             reduce_list = (
                 modality_value[0].ndim >= 5
             )  # Audio and Video inputs consist of multiple clips
@@ -573,7 +578,9 @@ def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks_1=31
         # 打印状态字典的键
         #print(state_dict.keys())
         model.load_state_dict(state_dict, strict=False)
-       
+        # for name, param in model.named_parameters():
+        #     print(name)
+        model.modality_trunks[ModalityType.VISION].init_block()
 
     return model
 

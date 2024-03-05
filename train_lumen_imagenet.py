@@ -43,6 +43,7 @@ from models.lumen6_model import ModalityType, load_module,save_module
 from models.lumen_model import ModalityType, load_module,save_module
 logging.basicConfig(level=logging.INFO, force=True)
 
+
 # Logging settings
 LOG_ON_STEP = True
 LOG_ON_EPOCH = True
@@ -72,10 +73,11 @@ class ImageBindTrain(L.LightningModule):
         self.save_hyperparameters()
         self.text_list = text_list
         # Load full pretrained ImageBind model
-        self.model = lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=30,vision_num_blocks_2=1,text_num_blocks=24)
+        self.model = lumen6_model.imagebind_huge(pretrained=True,vision_num_blocks_1=31,vision_num_blocks_2=1,text_num_blocks=24)
       
 
         if lora:
+            torch.autograd.set_detect_anomaly(True)
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
             for modality_trunk in self.model.modality_trunks.children():
@@ -91,8 +93,8 @@ class ImageBindTrain(L.LightningModule):
             #                                                                   modality_names=lora_modality_names))
             # LoRA.load_lora_modality_trunks(self.model.modality_trunks_2, checkpoint_dir=lora_checkpoint_dir, postfix = "_trunk2_last")
             # # Load postprocessors & heads
-            load_module(self.model.modality_postprocessors, module_name="preprocessors",
-                        checkpoint_dir=lora_checkpoint_dir)
+            # load_module(self.model.modality_postprocessors, module_name="preprocessors",
+            #             checkpoint_dir=lora_checkpoint_dir)
             load_module(self.model.modality_postprocessors, module_name="postprocessors",
                         checkpoint_dir=lora_checkpoint_dir)
             load_module(self.model.modality_heads, module_name="heads",
@@ -123,20 +125,33 @@ class ImageBindTrain(L.LightningModule):
     
     
     def info_nce_loss(self, batch, mode="train"):
-        data_a, data_b = batch
-        #data_a=[data_a]
-        text = [self.text_list[i] for i in data_b.tolist()]
-        data_b = data.load_and_transform_text(text, self.device)
-        data_b = [data_b]
+        # data_a, data_b = batch
+        # #data_a=[data_a]
+        # text = [self.text_list[i] for i in data_b.tolist()]
+        # data_b = data.load_and_transform_text(text, self.device)
+        # data_b = [data_b]
         # feats = self.model({ModalityType.VISION: data_a,ModalityType.TEXT: data_b}) 
         # feats_a_tensor=feats[ModalityType.VISION]
         # # class_b could be any modality
         # feats_b_tensor = feats[ModalityType.TEXT]
+        data_a, data_b = batch
+        data_a = [data_a]
+        text = [self.text_list[i] for i in data_b.tolist()]
+        data_b = data.load_and_transform_text(text, self.device)
+        data_b = [data_b]
+
+        # feats = [self.model({ModalityType.VISION: [data_a[i].unsqueeze(0)],ModalityType.TEXT: data_b })for i in range(data_a.shape[0]) ]
+        # feats_a_tensor=torch.cat([dict_[ModalityType.VISION] for dict_ in feats],dim=0)
+        # #feats_b_tensor=torch.cat([list(dict_[ModalityType.TEXT].values())[0] for dict_ in feats],dim=0)
+        # feats_b_tensor=torch.cat([dict_[ModalityType.TEXT] for dict_ in feats],dim=0)
         
-        feats = [self.model({ModalityType.VISION: [data_a[i].unsqueeze(0)],ModalityType.TEXT: data_b })for i in range(data_a.shape[0]) ]
-        feats_a_tensor=torch.cat([dict_[ModalityType.VISION] for dict_ in feats],dim=0)
-        #feats_b_tensor=torch.cat([list(dict_[ModalityType.TEXT].values())[0] for dict_ in feats],dim=0)
-        feats_b_tensor=torch.cat([dict_[ModalityType.TEXT] for dict_ in feats],dim=0)
+        feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
+        feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
+        # class_b could be any modality
+        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
+        feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
+
+        
         if self.hparams.self_contrast:
             feats_a_b_tensor = torch.cat([feats_a_tensor.chunk(2)[0], feats_b_tensor], dim=0)
             feats_tensors = [feats_a_tensor, feats_a_b_tensor]
@@ -192,17 +207,32 @@ class ImageBindTrain(L.LightningModule):
         return self.info_nce_loss(batch, mode="train")
 
     def validation_step(self, batch, batch_idx):
+    #     data_a, target = batch
+    #   #  data_a = [data_a]
+    #     text = copy.deepcopy(test_dataset.text_list)
+    #     data_b = data.load_and_transform_text(text, self.device)
+    #     data_b = [data_b]
+    #     #data_a=[data_a]
         data_a, target = batch
-      #  data_a = [data_a]
+        data_a = [data_a]
         text = copy.deepcopy(test_dataset.text_list)
         data_b = data.load_and_transform_text(text, self.device)
         data_b = [data_b]
-        #data_a=[data_a]
         
-        feats = [self.model({ModalityType.VISION: [data_a[i].unsqueeze(0)],ModalityType.TEXT: data_b })for i in range(data_a.shape[0]) ]
-        feats_a_tensor=torch.cat([dict_[ModalityType.VISION] for dict_ in feats],dim=0)
-        #feats_b_tensor=torch.cat([list(dict_[ModalityType.TEXT].values())[0] for dict_ in feats],dim=0)
-        feats_b_tensor=torch.cat([dict_[ModalityType.TEXT] for dict_ in feats],dim=0)
+        
+        # feats = [self.model({ModalityType.VISION: [data_a[i].unsqueeze(0)],ModalityType.TEXT: data_b })for i in range(data_a.shape[0]) ]
+        # feats_a_tensor=torch.cat([dict_[ModalityType.VISION] for dict_ in feats],dim=0)
+        # #feats_b_tensor=torch.cat([list(dict_[ModalityType.TEXT].values())[0] for dict_ in feats],dim=0)
+        # feats_b_tensor=torch.cat([dict_[ModalityType.TEXT] for dict_ in feats],dim=0)
+        
+        # class_a is always "vision" according to ImageBind
+        feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
+        feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
+        # class_b could be any modality
+        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
+        feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
+
+        
         # class_b could be any modality
         #feats_a_tensor = feats[ModalityType.VISION]
         #feats_b_tensor = feats[ModalityType.TEXT]
@@ -224,8 +254,8 @@ class ImageBindTrain(L.LightningModule):
             #LoRA.save_lora_modality_trunks(self.model.modality_trunks_2,checkpoint_dir=self.hparams.lora_checkpoint_dir, postfix= "_trunk2_last")
             #LoRA.save_lora_modality_trunks(self.model.modality_trunks_2, checkpoint_dir=self.hparams.lora_checkpoint_dir)
             # Save postprocessors & heads
-            save_module(self.model.modality_preprocessors, module_name="preprocessors",
-                        checkpoint_dir=self.hparams.lora_checkpoint_dir)
+            # save_module(self.model.modality_preprocessors, module_name="preprocessors",
+            #             checkpoint_dir=self.hparams.lora_checkpoint_dir)
             save_module(self.model.modality_postprocessors, module_name="postprocessors",
                         checkpoint_dir=self.hparams.lora_checkpoint_dir)
             save_module(self.model.modality_heads, module_name="heads",
@@ -263,7 +293,7 @@ def parse_args():
 
     parser.add_argument("--lora", action="store_true", default=True,help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/550_epochs_lora",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora31-1",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
