@@ -38,6 +38,7 @@ from torchvision import transforms
 from datasets.imagenet import ImageNetDataset
 from api.clotho_text2audio import ClothoTextDataset
 import data
+import numpy as np
 
 from models import imagebind_model
 from models import lora as LoRA
@@ -69,7 +70,7 @@ class ImageBindTrain(L.LightningModule):
                  self_contrast=False, temperature=0.07,  momentum_betas=(0.9, 0.95), 
                  lora=False, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
                  lora_layer_idxs=None, lora_modality_names=None,
-                 linear_probing=False, text_list=[]
+                 linear_probing=False, train_audio_transfered_path='', eval_audio_transfered_path='',train_audio_paths=[],eval_audio_paths=[]
                  ):
         super().__init__()
         assert not (linear_probing and lora), \
@@ -77,12 +78,23 @@ class ImageBindTrain(L.LightningModule):
             "Cannot set both linear_probing=True and lora=True. " \
             "Linear probing stores params in lora_checkpoint_dir"
         self.save_hyperparameters()
-        self.text_list = text_list
+
+        
         # Load full pretrained ImageBind model
-        self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=24)
+        self.model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=3,vision_num_blocks=0)
         #self.model = nn.parallel.DistributedDataParallel(model, device_ids=[rank])
-        self.model = DataParallel(self.model)
-        self.model = self.model.to('cuda:0')
+        if os.path.exists(train_audio_transfered_path):
+            self.train_audio_transfered = torch.tensor(np.load(train_audio_transfered_path)).cpu().requires_grad_(False)
+        else:
+            self.train_audio_transfered = data.load_and_transform_audio_data(train_audio_paths)
+            np.save(train_audio_transfered_path,self.train_audio_transfered.cpu().numpy())
+        
+        self.eval_audio_transfered_path = eval_audio_transfered_path
+        if os.path.exists(eval_audio_transfered_path):
+            self.eval_audio_transfered = torch.tensor(np.load(eval_audio_transfered_path)).cpu().requires_grad_(False)
+        else:
+            self.eval_audio_transfered = data.load_and_transform_audio_data(eval_audio_paths)
+            np.save(eval_audio_transfered_path,self.eval_audio_transfered.cpu().numpy())
 
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
@@ -124,17 +136,21 @@ class ImageBindTrain(L.LightningModule):
         return [optimizer], [lr_scheduler]
 
     def info_nce_loss(self, batch, mode="train"):
-        data_a, class_a,data_b,class_b = batch
+        data_b,data_a = batch
+        data_a = [copy.deepcopy(self.train_audio_transfered[i]) for i in data_a.tolist()]
         # data_a = [data_a]
         # text = [self.text_list[i] for i in data_b.tolist()]
-        # data_b = data.load_and_transform_text(text, self.device)
-        # data_b = [data_b]
+        data_b = data.load_and_transform_text(data_b, self.device)
+        data_b = [data_b]
 
         # class_a is always "vision" according to ImageBind
-        feats_a = [self.model({class_a[0]: data_a_i}) for data_a_i in data_a]
+
+
+        # test use audio
+        feats_a = [self.model({ModalityType.AUDIO: data_a_i.to(self.device)}) for data_a_i in data_a]
         feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
         # class_b could be any modality
-        feats_b = [self.model({class_b[0]: data_b_i}) for data_b_i in data_b]
+        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
         feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
 
         if self.hparams.self_contrast:
@@ -189,34 +205,64 @@ class ImageBindTrain(L.LightningModule):
         return dual_nll
 
     def training_step(self, batch, batch_idx):
+        # self.model.train()
+        # if(self.train_audio_transfered.device != self.device):
+        #     self.train_audio_transfered = self.train_audio_transfered.to(self.device)
+        # if(self.eval_audio_transfered.device != self.device):
+        #     self.eval_audio_transfered = self.eval_audio_transfered.to(self.device)
         return self.info_nce_loss(batch, mode="train")
 
     def validation_step(self, batch, batch_idx):
-        # data_a, target = batch
+        # self.model.eval()
+        # print('valid batch',batch_idx)
+        data_b,target = batch
         # data_a = [data_a]
-        # text = copy.deepcopy(test_dataset.text_list)
-        # data_b = data.load_and_transform_text(text, self.device)
-        # data_b = [data_b]
+        # text = [self.text_list[i] for i in data_b.tolist()]
+        data_b = data.load_and_transform_text(data_b, self.device)
 
-        # # class_a is always "vision" according to ImageBind
-        # feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
-        # feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
-        # # class_b could be any modality
-        # feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
-        # feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
+        # class_a is always "vision" according to ImageBind
+        data_a = torch.tensor(np.load(self.eval_audio_transfered_path)).requires_grad_(False).to(self.device)
 
-        # match_value = feats_a_tensor @ feats_b_tensor.T
 
-        # result = torch.softmax(match_value, dim=-1)
-        # _, predicted = torch.max(result, -1)
-        # correct = predicted.eq(target).sum()
-        # test_correct = correct.item()
-        # test_total = target.size(0)
-        # self.log("val" + "_acc_top1", test_correct / test_total, prog_bar=True,
-        #         on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
-        self.info_nce_loss(batch, mode="val")
+        # test use audio
+        total_batches = (data_a.size(0) + 31) // 32
+    
+        all_outputs = []  # 存储所有批次的输出
+        
+        for batch_idx in range(total_batches):
+            start_idx = batch_idx * 32
+            end_idx = start_idx + 32
+            data_batch = data_a[start_idx:end_idx]
+            
+            # 模型预测
+            with torch.no_grad():  # 确保不会计算梯度
+                batch_output = self.model({ModalityType.AUDIO: data_batch})[ModalityType.AUDIO]
+            
+            all_outputs.append(batch_output)
+        
+        # 使用torch.cat聚合输出，这自动处理了最后一个批次可能小于batch_size的情况
+        feats_a_tensor = torch.cat(all_outputs, dim=0)
+        # feats_a_tensor = [self.model({ModalityType.AUDIO: all_outputs})[ModalityType.AUDIO]]
+        # class_b could be any modality
+        feats_b_tensor = self.model({ModalityType.TEXT: data_b})[ModalityType.TEXT]
+
+        match_value_1 = feats_b_tensor @ feats_a_tensor.T
+
+        result_1 = torch.softmax(match_value_1, dim=-1)
+        _, predicted = torch.max(result_1, dim=-1)
+        _, topk_indices = torch.topk(result_1, k=10, dim=-1)
+        counts_r1 = torch.sum(predicted == target).item()
+        #counts_r1 = np.concatenate([counts_r1, [any(predicted[i] == target[i]) for i in range(len(predicted))]])
+        topk_indices=topk_indices.T
+        counts_r10 = torch.sum(topk_indices == target).item()
+        test_total = target.size(0)
+        self.log("val" + "r@10",counts_r10 / test_total, prog_bar=True,
+                on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
 
     def on_validation_epoch_end(self):
+        print('******************************************************************************')
+        print('validation end')
+        print('******************************************************************************')
         if self.hparams.lora:
             # Save LoRA checkpoint
             LoRA.save_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=self.hparams.lora_checkpoint_dir)
@@ -245,8 +291,8 @@ def parse_args():
     parser.add_argument("--loggers_dir", type=str, default="./.logs", help="Directory to save the logs")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode (Don't plot samples on start)")
 
-    parser.add_argument("--max_epochs", type=int, default=500, help="Maximum number of epochs to train")
-    parser.add_argument("--batch_size", type=int, default=12, help="Batch size for training and validation")
+    parser.add_argument("--max_epochs", type=int, default=200, help="Maximum number of epochs to train")
+    parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training and validation")
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
     parser.add_argument("--momentum_betas", nargs=2, type=float, default=[0.9, 0.95],
@@ -256,20 +302,20 @@ def parse_args():
     parser.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     parser.add_argument("--self_contrast", action="store_true", help="Use self-contrast on the image modality")
 
-    parser.add_argument("--lora", action="store_true", help="Use LoRA")
+    parser.add_argument("--lora", default=True, action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora_clotho",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/clotho_3",
                         help="Directory to save LoRA checkpoint")
-    parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["audio", "text"],
+    parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["audio"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
                         help="Modality names to apply LoRA")
-    parser.add_argument("--lora_layer_idxs", nargs="+", type=int,
+    parser.add_argument("--lora_layer_idxs", nargs="+", type=int,default=[1,2],
                         help="Layer indices to apply LoRA")
     parser.add_argument("--lora_layer_idxs_vision", nargs="+", type=int,
                         help="Layer indices to apply LoRA for vision modality. Overrides lora_layer_idxs if specified")
     parser.add_argument("--lora_layer_idxs_text", nargs="+", type=int,
                         help="Layer indices to apply LoRA for text modality. Overrides lora_layer_idxs if specified")
-    parser.add_argument("--lora_layer_idxs_audio", nargs="+", type=int,
+    parser.add_argument("--lora_layer_idxs_audio", nargs="+", type=int,default=[1,2],
                         help="Layer indices to apply LoRA for audio modality. Overrides lora_layer_idxs if specified")
     parser.add_argument("--lora_layer_idxs_thermal", nargs="+", type=int,
                         help="Layer indices to apply LoRA for thermal modality. Overrides lora_layer_idxs if specified")
@@ -332,27 +378,14 @@ if __name__ == "__main__":
     device_name = args.device  # "cuda:0" if torch.cuda.is_available() else "cpu"
     device = torch.device(device_name)
  
-    data_transform = transforms.Compose(
-        [
-            transforms.Resize(
-                224, interpolation=transforms.InterpolationMode.BICUBIC
-            ),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=(0.48145466, 0.4578275, 0.40821073),
-                std=(0.26862954, 0.26130258, 0.27577711),
-            ),
-        ]
-    )
-    
-    
-    Clotho_dataset = ClothoTextDataset(csv_file=args.datasets_dir,datadir="/home/pc/Mobile-Search-Engine/datasets/evaluation",device=device)
-    test_dl = DataLoader(dataset=Clotho_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False,
-             num_workers=4, pin_memory=False, persistent_workers=args.num_workers)
-    
-    # train_dataset = ImageNetDataset(transform=data_transform,split='train',device=device,datadir=args.datasets_dir)
-    # test_dataset = ImageNetDataset(transform=data_transform,split='val',device=device,datadir=args.datasets_dir)
+    train_dataset = ClothoTextDataset(csv_file='/data/yx/MobileSearchEngine/Mobile-Search-Engine-main/.datasets/data/clotho_csv_files/clotho_captions_development.csv',
+                                      datadir="/data/yx/MobileSearchEngine/Mobile-Search-Engine-main/.datasets/data/clotho_audio_files/development",device=device)
+    test_dataset = ClothoTextDataset(csv_file='/data/yx/MobileSearchEngine/Mobile-Search-Engine-main/.datasets/data/clotho_csv_files/clotho_captions_evaluation.csv',
+                                     datadir="/data/yx/MobileSearchEngine/Mobile-Search-Engine-main/.datasets/data/clotho_audio_files/evaluation",device=device)
+    train_dl = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True,
+                num_workers=8, pin_memory=False, persistent_workers=args.num_workers)
+    test_dl = DataLoader(dataset=test_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False,
+             num_workers=8, pin_memory=False, persistent_workers=args.num_workers)
 
     # train_loader = DataLoader(
     #     train_dataset,
@@ -396,7 +429,8 @@ if __name__ == "__main__":
                            lora=args.lora, lora_rank=args.lora_rank, lora_checkpoint_dir=args.lora_checkpoint_dir,
                            lora_layer_idxs=lora_layer_idxs if lora_layer_idxs else None,
                            lora_modality_names=lora_modality_names if lora_modality_names else None,
-                           linear_probing=args.linear_probing, text_list=Clotho_dataset.text_list)
+                           linear_probing=args.linear_probing,train_audio_transfered_path='./audioData_train.npy',
+                           eval_audio_transfered_path='audioData.npy',train_audio_paths=train_dataset.audio_paths,eval_audio_paths=test_dataset.audio_paths)
 
     if args.full_model_checkpointing:
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,
@@ -407,10 +441,12 @@ if __name__ == "__main__":
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,}
 
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=2,# 指定使用的 GPU 数量
+                      devices=[5,6,3,2],# 指定使用的 GPU 数量
                        deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
-                      logger=loggers if loggers else None, **checkpointing)
+                      logger=loggers if loggers else None, **checkpointing,strategy='ddp_find_unused_parameters_true',
+                      check_val_every_n_epoch=1
+                      )
 
-    trainer.fit(model, test_dl)
+    trainer.fit(model, train_dl,test_dl)
 

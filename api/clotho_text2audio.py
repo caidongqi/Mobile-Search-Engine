@@ -9,7 +9,7 @@ import torch.nn as nn
 import torchaudio
 import math
 class ClothoTextDataset(Dataset):
-    def __init__(self, csv_file, device='cpu'):
+    def __init__(self, csv_file, datadir='',device='cpu'):
         # 初始化操作，可以在这里加载数据集
         self.data = pd.read_csv(csv_file,sep=',') # 假设数据集以CSV文件形式提供
         captions_array = self.data[['caption_1', 'caption_2', 'caption_3', 'caption_4', 'caption_5']].values.flatten().tolist()
@@ -18,6 +18,7 @@ class ClothoTextDataset(Dataset):
         #print(captions_array)
         self.text_list=captions_array
         self.device=device
+        self.audio_paths = [os.path.join(datadir,file) for file in self.data[['file_name']].values.flatten().tolist()]
 
     def __len__(self):
         # 返回数据集的长度
