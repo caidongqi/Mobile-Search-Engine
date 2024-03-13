@@ -1,0 +1,52 @@
+nohup: ignoring input
+/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torchvision/transforms/_functional_video.py:6: UserWarning: The 'torchvision.transforms._functional_video' module is deprecated since 0.12 and will be removed in the future. Please use the 'torchvision.transforms.functional' module instead.
+  warnings.warn(
+/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torchvision/transforms/_transforms_video.py:22: UserWarning: The 'torchvision.transforms._transforms_video' module is deprecated since 0.12 and will be removed in the future. Please use the 'torchvision.transforms' module instead.
+  warnings.warn(
+2225
+0it [00:00, ?it/s]INFO:root:batch_idx = 0, r1=0.0,r10=0.09375, test_total = 64
+1it [38:41, 2321.92s/it]INFO:root:batch_idx = 1, r1=0.0,r10=0.046875, test_total = 128
+2it [1:16:01, 2273.39s/it]INFO:root:batch_idx = 2, r1=0.0,r10=0.03125, test_total = 192
+3it [1:54:13, 2281.99s/it]INFO:root:batch_idx = 3, r1=0.0,r10=0.0234375, test_total = 256
+4it [2:41:21, 2497.63s/it]INFO:root:batch_idx = 4, r1=0.0,r10=0.01875, test_total = 320
+5it [3:48:22, 3046.74s/it]INFO:root:batch_idx = 5, r1=0.0,r10=0.015625, test_total = 384
+6it [4:22:58, 2716.89s/it]INFO:root:batch_idx = 6, r1=0.0,r10=0.013392857142857142, test_total = 448
+7it [4:57:48, 2511.97s/it]INFO:root:batch_idx = 7, r1=0.0,r10=0.013671875, test_total = 512
+8it [5:32:10, 2368.47s/it]INFO:root:batch_idx = 8, r1=0.0,r10=0.012152777777777778, test_total = 576
+9it [6:06:29, 2271.83s/it]INFO:root:batch_idx = 9, r1=0.0,r10=0.0125, test_total = 640
+10it [6:40:49, 2206.56s/it]INFO:root:batch_idx = 10, r1=0.0,r10=0.011363636363636364, test_total = 704
+11it [7:15:08, 2161.45s/it]INFO:root:batch_idx = 11, r1=0.0,r10=0.010416666666666666, test_total = 768
+12it [7:49:29, 2130.62s/it]INFO:root:batch_idx = 12, r1=0.0,r10=0.009615384615384616, test_total = 832
+13it [8:23:47, 2108.81s/it]INFO:root:batch_idx = 13, r1=0.0,r10=0.010044642857142858, test_total = 896
+14it [8:58:07, 2094.00s/it]INFO:root:batch_idx = 14, r1=0.0,r10=0.010416666666666666, test_total = 960
+15it [9:32:26, 2083.49s/it]INFO:root:batch_idx = 15, r1=0.0,r10=0.009765625, test_total = 1024
+16it [10:06:51, 2077.95s/it]INFO:root:batch_idx = 16, r1=0.0,r10=0.009191176470588236, test_total = 1088
+17it [10:46:12, 2162.91s/it]INFO:root:batch_idx = 17, r1=0.0,r10=0.008680555555555556, test_total = 1152
+18it [12:02:53, 2895.59s/it]INFO:root:batch_idx = 18, r1=0.0,r10=0.008223684210526315, test_total = 1216
+19it [12:55:31, 2974.44s/it]INFO:root:batch_idx = 19, r1=0.0,r10=0.00859375, test_total = 1280
+20it [13:32:55, 2755.16s/it]INFO:root:batch_idx = 20, r1=0.0,r10=0.008928571428571428, test_total = 1344
+21it [14:15:56, 2702.90s/it]INFO:root:batch_idx = 21, r1=0.0,r10=0.009232954545454546, test_total = 1408
+22it [15:07:46, 2825.10s/it]INFO:root:batch_idx = 22, r1=0.0,r10=0.008831521739130434, test_total = 1472
+23it [16:14:38, 3181.15s/it]INFO:root:batch_idx = 23, r1=0.0,r10=0.008463541666666666, test_total = 1536
+24it [17:51:04, 3962.72s/it]INFO:root:batch_idx = 24, r1=0.0,r10=0.00875, test_total = 1600
+25it [20:13:09, 5331.79s/it]INFO:root:batch_idx = 25, r1=0.0,r10=0.008413461538461538, test_total = 1664
+26it [22:03:55, 5725.88s/it]INFO:root:batch_idx = 26, r1=0.0,r10=0.008101851851851851, test_total = 1728
+27it [23:37:22, 5690.20s/it]INFO:root:batch_idx = 27, r1=0.0011160714285714285,r10=0.008928571428571428, test_total = 1792
+28it [24:55:26, 5388.32s/it]INFO:root:batch_idx = 28, r1=0.0010775862068965517,r10=0.008620689655172414, test_total = 1856
+29it [26:18:56, 5274.90s/it]INFO:root:batch_idx = 29, r1=0.0015625,r10=0.009895833333333333, test_total = 1920
+30it [28:39:56, 6230.56s/it]INFO:root:batch_idx = 30, r1=0.0015120967741935483,r10=0.010080645161290322, test_total = 1984
+31it [30:47:34, 6658.85s/it]INFO:root:batch_idx = 31, r1=0.00146484375,r10=0.009765625, test_total = 2048
+32it [32:24:22, 6403.51s/it]INFO:root:batch_idx = 32, r1=0.0014204545454545455,r10=0.010416666666666666, test_total = 2112
+33it [33:45:07, 5935.78s/it]INFO:root:batch_idx = 33, r1=0.0013786764705882354,r10=0.010569852941176471, test_total = 2176
+34it [35:18:05, 5828.72s/it]INFO:root:batch_idx = 34, r1=0.001348314606741573,r10=0.011685393258426966, test_total = 2225
+35it [36:44:57, 5643.46s/it]35it [36:44:57, 3779.92s/it]
+Traceback (most recent call last):
+  File "/data/zzl/Mobile-Search-Engine/test_audiocaption.py", line 170, in <module>
+    main()
+  File "/data/zzl/Mobile-Search-Engine/test_audiocaption.py", line 143, in main
+    Accuracy = run_inference()
+  File "/data/zzl/Mobile-Search-Engine/test_audiocaption.py", line 137, in run_inference
+    np.savetxt(f'./results/clotho_t2a/R1/t{t_block}_a{a_block}_acc{r1}.txt',counts_r1,fmt='%d')
+  File "/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/numpy/lib/npyio.py", line 1556, in savetxt
+    open(fname, 'wt').close()
+FileNotFoundError: [Errno 2] No such file or directory: './results/clotho_t2a/R1/t24_a12_acc0.001348314606741573.txt'
