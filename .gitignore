@@ -9,3 +9,17 @@ bpe/*
 .datasets/*
 results/*
 zz_ignore./*
+embeddings_1.pth
+embeddings_2.pth
+embeddings_3.pth
+embeddings_4.pth
+embeddings_5.pth
+embeddings_6.pth
+embeddings_7.pth
+embeddings_8.pth
+embeddings_9.pth
+embeddings_10.pth
+embeddings_11.pth
+embeddings_12.pth
+short_list.json
+topk-clotho.xlsx
