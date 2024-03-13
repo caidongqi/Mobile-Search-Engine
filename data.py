@@ -7,6 +7,7 @@
 
 import logging
 import math
+from tqdm import tqdm
 
 import torch
 import torch.nn as nn
@@ -132,7 +133,7 @@ def load_and_transform_audio_data(
         clip_duration=clip_duration, clips_per_video=clips_per_video
     )
 
-    for audio_path in audio_paths:
+    for audio_path in tqdm(audio_paths):
         waveform, sr = torchaudio.load(audio_path)
         if sample_rate != sr:
             waveform = torchaudio.functional.resample(

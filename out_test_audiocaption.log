@@ -1,0 +1,38 @@
+nohup: ignoring input
+/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torchvision/transforms/_functional_video.py:6: UserWarning: The 'torchvision.transforms._functional_video' module is deprecated since 0.12 and will be removed in the future. Please use the 'torchvision.transforms.functional' module instead.
+  warnings.warn(
+/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torchvision/transforms/_transforms_video.py:22: UserWarning: The 'torchvision.transforms._transforms_video' module is deprecated since 0.12 and will be removed in the future. Please use the 'torchvision.transforms' module instead.
+  warnings.warn(
+2225
+loading model
+model loaded
+load audioData done!
+0it [00:00, ?it/s]0it [00:08, ?it/s]
+Traceback (most recent call last):
+  File "/data/zzl/Mobile-Search-Engine/test_audiocaption.py", line 162, in <module>
+    main()
+  File "/data/zzl/Mobile-Search-Engine/test_audiocaption.py", line 135, in main
+    Accuracy = run_inference()
+  File "/data/zzl/Mobile-Search-Engine/test_audiocaption.py", line 98, in run_inference
+    embeddings = model(inputs)
+  File "/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1190, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/data/zzl/Mobile-Search-Engine/models/imagebind_model.py", line 462, in forward
+    modality_value = self.modality_trunks[modality_key](**trunk_inputs)
+  File "/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1190, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/data/zzl/Mobile-Search-Engine/models/transformer.py", line 277, in forward
+    tokens = blk(tokens, attn_mask=attn_mask)
+  File "/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1190, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/data/zzl/Mobile-Search-Engine/models/transformer.py", line 161, in forward
+    x = x + self.drop_path(self.attn(self.norm_1(x), attn_mask))
+  File "/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1190, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/data/zzl/Mobile-Search-Engine/models/transformer.py", line 96, in forward
+    return super().forward(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
+  File "/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torch/nn/modules/activation.py", line 1167, in forward
+    attn_output, attn_output_weights = F.multi_head_attention_forward(
+  File "/data/zzl/.conda/envs/silence/lib/python3.9/site-packages/torch/nn/functional.py", line 5160, in multi_head_attention_forward
+    attn_output_weights = torch.bmm(q_scaled, k.transpose(-2, -1))
+torch.cuda.OutOfMemoryError: CUDA out of memory. Tried to allocate 15.72 GiB (GPU 4; 44.56 GiB total capacity; 31.40 GiB already allocated; 2.94 GiB free; 40.26 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
