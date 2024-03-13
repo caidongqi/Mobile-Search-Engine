@@ -1,3 +1,4 @@
+# pengcheng's ignore
 **__pycache__
 .vscode
 .DS_Store
@@ -9,6 +10,7 @@ bpe/*
 .datasets/*
 results/*
 zz_ignore./*
+
 embeddings_1.pth
 embeddings_2.pth
 embeddings_3.pth
