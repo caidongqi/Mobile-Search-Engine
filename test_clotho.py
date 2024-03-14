@@ -41,7 +41,7 @@ model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=6,vision
 if lora:
     model.modality_trunks.update(
         LoRA.apply_lora_modality_trunks(model.modality_trunks, rank=4,
-                                        layer_idxs={ModalityType.AUDIO: [ 1, 2,3,4,5]},
+                                        layer_idxs={ModalityType.AUDIO: [1, 2,3,4,5]},
                                         modality_names=[ModalityType.AUDIO]))
 
     # Load LoRA params if found
@@ -55,7 +55,13 @@ if lora:
         load_module(model.modality_heads, module_name="heads",
                     checkpoint_dir="./.checkpoints/lora/clotho_6")
 
+audio_num_blocks=1
 
+model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=audio_num_blocks)
+v_block=len(model.modality_trunks["vision"].blocks)
+t_block=len(model.modality_trunks["text"].blocks)
+a_block=len(model.modality_trunks["audio"].blocks)
+i_block=len(model.modality_trunks["imu"].blocks)
 #
 # model = DataParallel(model)
 
@@ -130,6 +136,13 @@ def run_inference():
             r10=counts_r10/total
           
             logging.info(f"r1={r1},r10={r10}, test_total = {total}")
+        
+    count_ones_r1 = np.sum(counts_r1 == 1)
+    count_ones_r10 = np.sum(counts_r10 == 1)
+    r1=count_ones_r1/len(counts_r1)
+    r10=count_ones_r10/len(counts_r1)
+    np.savetxt(f'./results/clotho_t2a/R1/t{t_block}_a{a_block}_acc{r1}.txt',counts_r1,fmt='%d')
+    np.savetxt(f'./results/clotho_t2a/R10/t{t_block}_a{a_block}_acc{r10}.txt',counts_r10,fmt='%d')
 
 
     #logging.info(f"batch_idx = {batch_idx}, test_correct = {test_correct}, test_total = {test_total}, Accuracy = {acc}, Recall = {recall}")
@@ -137,6 +150,28 @@ def run_inference():
     
     return r1,r10
 
+def print_text_label():
+    data_transform = transforms.Compose(
+        [
+            transforms.Resize(
+                224, interpolation=transforms.InterpolationMode.BICUBIC
+            ),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+
+    datadir = "./.datasets/imagenet"
+    test_ds = ImageNet(datadir, split="val", transform=data_transform)
+    test_dl = DataLoader(dataset=test_ds, batch_size=64, shuffle=False, drop_last=False,
+        num_workers=4, pin_memory=True, persistent_workers=True)
+    
+    labels = sorted(list(set(batch[1] for batch in test_dl)))
+    print(labels)
 
 if __name__ == "__main__":
     Accuracy = run_inference()
