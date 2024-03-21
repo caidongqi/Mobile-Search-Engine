@@ -70,7 +70,8 @@ class ImageBindTrain(L.LightningModule):
                  self_contrast=False, temperature=0.07,  momentum_betas=(0.9, 0.95), 
                  lora=False, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
                  lora_layer_idxs=None, lora_modality_names=None,
-                 linear_probing=False, train_audio_transfered_path='', eval_audio_transfered_path='',train_audio_paths=[],eval_audio_paths=[]
+                 linear_probing=False, train_audio_transfered_path='', eval_audio_transfered_path='',train_audio_paths=[],eval_audio_paths=[],
+                 sub_lora_layer_idxs=None,sub_lora_modality_names=None,sub_lora_checkpoint_dir="./.checkpoints/lora",
                  ):
         super().__init__()
         assert not (linear_probing and lora), \
@@ -81,7 +82,7 @@ class ImageBindTrain(L.LightningModule):
 
         
         # Load full pretrained ImageBind model
-        self.model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=3,vision_num_blocks=0)
+        self.model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=12,vision_num_blocks=0)
         #self.model = nn.parallel.DistributedDataParallel(model, device_ids=[rank])
         if os.path.exists(train_audio_transfered_path):
             self.train_audio_transfered = torch.tensor(np.load(train_audio_transfered_path)).cpu().requires_grad_(False)
@@ -96,6 +97,14 @@ class ImageBindTrain(L.LightningModule):
             self.eval_audio_transfered = data.load_and_transform_audio_data(eval_audio_paths)
             np.save(eval_audio_transfered_path,self.eval_audio_transfered.cpu().numpy())
 
+
+        # if(sub_lora_layer_idxs is not None):
+        #     for i in range(len(sub_lora_checkpoint_dir)):
+        #         self.model.modality_trunks.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks, rank=lora_rank,
+        #                                                                         layer_idxs=sub_lora_layer_idxs[i],
+        #                                                                         modality_names=sub_lora_modality_names[i]))
+        #         LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=sub_lora_checkpoint_dir[i])
+
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
@@ -106,6 +115,12 @@ class ImageBindTrain(L.LightningModule):
                                                                               layer_idxs=lora_layer_idxs,
                                                                               modality_names=lora_modality_names))
             LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=lora_checkpoint_dir)
+            for i in range(len(sub_lora_checkpoint_dir)):
+                LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=sub_lora_checkpoint_dir[i],require_grad=False)
+                for modality_name, one_layer_idxs in sub_lora_layer_idxs[i].items():
+                    for idx in one_layer_idxs:
+                        for a,para in self.model.modality_trunks[modality_name].lora_model.blocks[idx].named_parameters():
+                            para.requires_grad_(False)
 
             # Load postprocessors & heads
             load_module(self.model.modality_postprocessors, module_name="postprocessors",
@@ -304,18 +319,18 @@ def parse_args():
 
     parser.add_argument("--lora", default=True, action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/clotho_3",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/clotho_12_way2",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["audio"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
                         help="Modality names to apply LoRA")
-    parser.add_argument("--lora_layer_idxs", nargs="+", type=int,default=[1,2],
+    parser.add_argument("--lora_layer_idxs", nargs="+", type=int,default=[2,3,4,5],
                         help="Layer indices to apply LoRA")
     parser.add_argument("--lora_layer_idxs_vision", nargs="+", type=int,
                         help="Layer indices to apply LoRA for vision modality. Overrides lora_layer_idxs if specified")
     parser.add_argument("--lora_layer_idxs_text", nargs="+", type=int,
                         help="Layer indices to apply LoRA for text modality. Overrides lora_layer_idxs if specified")
-    parser.add_argument("--lora_layer_idxs_audio", nargs="+", type=int,default=[1,2],
+    parser.add_argument("--lora_layer_idxs_audio", nargs="+", type=int,default=[1,2,3,4,5,6,7,8,9,10,11],
                         help="Layer indices to apply LoRA for audio modality. Overrides lora_layer_idxs if specified")
     parser.add_argument("--lora_layer_idxs_thermal", nargs="+", type=int,
                         help="Layer indices to apply LoRA for thermal modality. Overrides lora_layer_idxs if specified")
@@ -420,7 +435,25 @@ if __name__ == "__main__":
             lora_modality_names.append(modality_type)
         else:
             raise ValueError(f"Unknown modality name: {modality_name}")
+        
 
+    sub_lora_modality_names=[]
+    sub_lora_layer_idxs=[]
+    all_sub_lora_layer_idxs = [[1,2,3,4,5],
+                               #[],
+                               #[6,7,8,9,10,11],
+                               ]
+    for i in range(len(all_sub_lora_layer_idxs)):
+        one_idxs = {}
+        one_names = []
+        for modality_name in args.lora_modality_names:
+            if modality_name in modalities:
+                modality_type = getattr(ModalityType, modality_name.upper())
+                one_idxs[modality_type] = all_sub_lora_layer_idxs[i]
+                one_names.append(modality_type)
+        sub_lora_layer_idxs.append(one_idxs)
+        sub_lora_modality_names.append(one_names)
+    
     # Train dataset
     model = ImageBindTrain(max_epochs=args.max_epochs, batch_size=args.batch_size, lr=args.lr,
                            weight_decay=args.weight_decay, momentum_betas=args.momentum_betas,
@@ -430,7 +463,10 @@ if __name__ == "__main__":
                            lora_layer_idxs=lora_layer_idxs if lora_layer_idxs else None,
                            lora_modality_names=lora_modality_names if lora_modality_names else None,
                            linear_probing=args.linear_probing,train_audio_transfered_path='./audioData_train.npy',
-                           eval_audio_transfered_path='audioData.npy',train_audio_paths=train_dataset.audio_paths,eval_audio_paths=test_dataset.audio_paths)
+                           eval_audio_transfered_path='audioData.npy',train_audio_paths=train_dataset.audio_paths,eval_audio_paths=test_dataset.audio_paths,
+                           sub_lora_checkpoint_dir=['./.checkpoints/lora/clotho_6_way2'],
+                           sub_lora_modality_names=sub_lora_modality_names,
+                           sub_lora_layer_idxs=sub_lora_layer_idxs)
 
     if args.full_model_checkpointing:
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,
@@ -441,11 +477,11 @@ if __name__ == "__main__":
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,}
 
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[5,6,3,2],# 指定使用的 GPU 数量
+                      devices=[4,5,6,7],# 指定使用的 GPU 数量
                        deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
                       logger=loggers if loggers else None, **checkpointing,strategy='ddp_find_unused_parameters_true',
-                      check_val_every_n_epoch=1
+                      check_val_every_n_epoch=3
                       )
 
     trainer.fit(model, train_dl,test_dl)

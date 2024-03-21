@@ -74,12 +74,13 @@ def save_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer],
     #         logging.warning(f"Could not save LoRA parameters for modality {modality_name} to {checkpoint_dir}.")
 
 def load_lora_modality_trunks(modality_trunks: Dict[str, SimpleTransformer],
-                              checkpoint_dir: str = "./.checkpoints/lora", postfix: str = "_last", extension: str = "safetensors"):
+                              checkpoint_dir: str = "./.checkpoints/lora", postfix: str = "_last", extension: str = "safetensors",
+                              require_grad: bool = True):
 
     for modality_name, modality_trunk in modality_trunks.items():
         try:
             if isinstance(modality_trunk, LoRA_SimpleTransformer):
-                modality_trunk.load_lora_parameters(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"))
+                modality_trunk.load_lora_parameters(os.path.join(checkpoint_dir, f"imagebind-lora-{modality_name}{postfix}.{extension}"),require_grad)
                 logging.info(f"Loaded LoRA parameters for modality {modality_name} from {checkpoint_dir}.")
         except FileNotFoundError:
             logging.warning(f"Could not find LoRA parameters for modality {modality_name} in {checkpoint_dir}.")
@@ -184,7 +185,7 @@ class LoRA_SimpleTransformer(nn.Module):
         os.makedirs(os.path.dirname(filename),exist_ok=True)
         save_file(merged_dict, filename)
         
-    def load_lora_parameters(self, filename: str) -> None:
+    def load_lora_parameters(self, filename: str,require_grad) -> None:
         r"""Only safetensors is supported now.
 
         pip install safetensors if you do not have one installed yet.
@@ -195,13 +196,23 @@ class LoRA_SimpleTransformer(nn.Module):
         with safe_open(filename, framework="pt") as f:
             for i, w_A_linear in enumerate(self.w_As):
                 saved_key = f"w_a_{i:03d}"
-                saved_tensor = f.get_tensor(saved_key)
-                w_A_linear.weight = Parameter(saved_tensor)
+                try:
+                    saved_tensor = f.get_tensor(saved_key)
+                    w_A_linear.weight = Parameter(saved_tensor)
+                    w_A_linear.requires_grad = require_grad
+                except:
+                    print(f"Failed to load {saved_key} from {filename}.")
+                    pass
 
             for i, w_B_linear in enumerate(self.w_Bs):
                 saved_key = f"w_b_{i:03d}"
-                saved_tensor = f.get_tensor(saved_key)
-                w_B_linear.weight = Parameter(saved_tensor)
+                try:
+                    saved_tensor = f.get_tensor(saved_key)
+                    w_B_linear.weight = Parameter(saved_tensor)
+                    w_B_linear.requires_grad = require_grad
+                except:
+                    print(f"Failed to load {saved_key} from {filename}.")
+                    pass
 
     def reset_parameters(self) -> None:
         for w_A in self.w_As:
