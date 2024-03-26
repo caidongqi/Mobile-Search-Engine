@@ -26,8 +26,8 @@ data_dir="/data/yx/MobileSearchEngine/Mobile-Search-Engine-main/.datasets/data/c
 # data_dir="/data/yx/MobileSearchEngine/Mobile-Search-Engine-main/.datasets/data/clotho_audio_files/development"
 
 
-f_s=os.listdir(data_dir)
-print('test data:',len(f_s))
+# f_s=os.listdir(data_dir)
+# print('test data:',len(f_s))
 pf=pd.read_csv(csv_file_path,sep=',') # 假设数据集以CSV文件形式提供
 audio_list=pf[['file_name']].values.flatten().tolist()
 audio_path=[os.path.join(data_dir,file) for file in audio_list]
