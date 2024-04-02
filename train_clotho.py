@@ -82,7 +82,7 @@ class ImageBindTrain(L.LightningModule):
 
         
         # Load full pretrained ImageBind model
-        self.model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=12,vision_num_blocks=0)
+        self.model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=4,vision_num_blocks=0)
         #self.model = nn.parallel.DistributedDataParallel(model, device_ids=[rank])
         if os.path.exists(train_audio_transfered_path):
             self.train_audio_transfered = torch.tensor(np.load(train_audio_transfered_path)).cpu().requires_grad_(False)
@@ -306,7 +306,7 @@ def parse_args():
     parser.add_argument("--loggers_dir", type=str, default="./.logs", help="Directory to save the logs")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode (Don't plot samples on start)")
 
-    parser.add_argument("--max_epochs", type=int, default=200, help="Maximum number of epochs to train")
+    parser.add_argument("--max_epochs", type=int, default=9, help="Maximum number of epochs to train")
     parser.add_argument("--batch_size", type=int, default=16, help="Batch size for training and validation")
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
@@ -319,7 +319,7 @@ def parse_args():
 
     parser.add_argument("--lora", default=True, action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/clotho_12_way2",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/2--12/clotho_4_way2",
                         help="Directory to save LoRA checkpoint")
     parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["audio"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
@@ -330,7 +330,7 @@ def parse_args():
                         help="Layer indices to apply LoRA for vision modality. Overrides lora_layer_idxs if specified")
     parser.add_argument("--lora_layer_idxs_text", nargs="+", type=int,
                         help="Layer indices to apply LoRA for text modality. Overrides lora_layer_idxs if specified")
-    parser.add_argument("--lora_layer_idxs_audio", nargs="+", type=int,default=[1,2,3,4,5,6,7,8,9,10,11],
+    parser.add_argument("--lora_layer_idxs_audio", nargs="+", type=int,default=[1,2,3],
                         help="Layer indices to apply LoRA for audio modality. Overrides lora_layer_idxs if specified")
     parser.add_argument("--lora_layer_idxs_thermal", nargs="+", type=int,
                         help="Layer indices to apply LoRA for thermal modality. Overrides lora_layer_idxs if specified")
@@ -439,7 +439,7 @@ if __name__ == "__main__":
 
     sub_lora_modality_names=[]
     sub_lora_layer_idxs=[]
-    all_sub_lora_layer_idxs = [[1,2,3,4,5],
+    all_sub_lora_layer_idxs = [[1,2],
                                #[],
                                #[6,7,8,9,10,11],
                                ]
@@ -464,7 +464,7 @@ if __name__ == "__main__":
                            lora_modality_names=lora_modality_names if lora_modality_names else None,
                            linear_probing=args.linear_probing,train_audio_transfered_path='./audioData_train.npy',
                            eval_audio_transfered_path='audioData.npy',train_audio_paths=train_dataset.audio_paths,eval_audio_paths=test_dataset.audio_paths,
-                           sub_lora_checkpoint_dir=['./.checkpoints/lora/clotho_6_way2'],
+                           sub_lora_checkpoint_dir=['./.checkpoints/lora/2--12/clotho_3_way2'],
                            sub_lora_modality_names=sub_lora_modality_names,
                            sub_lora_layer_idxs=sub_lora_layer_idxs)
 
@@ -477,7 +477,7 @@ if __name__ == "__main__":
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,}
 
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[4,5,6,7],# 指定使用的 GPU 数量
+                      devices=[0,1,2,3,],# 指定使用的 GPU 数量
                        deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
                       logger=loggers if loggers else None, **checkpointing,strategy='ddp_find_unused_parameters_true',

@@ -60,9 +60,9 @@ class ImageBindTrain(L.LightningModule):
     def __init__(self, lr=5e-4, weight_decay=1e-4, max_epochs=500, batch_size=32, num_workers=4, seed=42, 
                  self_contrast=False, temperature=0.07,  momentum_betas=(0.9, 0.95), 
                  lora=True, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
-                 
                  lora_layer_idxs=None, lora_modality_names=None,
-                 linear_probing=False, text_list=[]
+                 linear_probing=False, text_list=[],
+                 sub_lora_layer_idxs=None,sub_lora_modality_names=None,sub_lora_checkpoint_dir="./.checkpoints/lora",
                  ):
         super().__init__()
         assert not (linear_probing and lora), \
@@ -73,7 +73,7 @@ class ImageBindTrain(L.LightningModule):
         self.text_list = text_list
 
         # Load full pretrained ImageBind model
-        self.model = imagebind_model.imagebind_huge(pretrained=True,text_num_blocks=24)
+        self.model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=6,audio_num_blocks=0)
         if lora:
             for modality_preprocessor in self.model.modality_preprocessors.children():
                 modality_preprocessor.requires_grad_(False)
@@ -84,6 +84,13 @@ class ImageBindTrain(L.LightningModule):
                                                                               layer_idxs=lora_layer_idxs,
                                                                               modality_names=lora_modality_names))
             LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=lora_checkpoint_dir)
+
+            for i in range(len(sub_lora_layer_idxs)):
+                LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=sub_lora_checkpoint_dir[i],require_grad=False)
+                for modality_name, one_layer_idxs in sub_lora_layer_idxs[i].items():
+                    for idx in one_layer_idxs:
+                        for a,para in self.model.modality_trunks[modality_name].lora_model.blocks[idx].named_parameters():
+                            para.requires_grad_(False)
 
             # Load postprocessors & heads
             load_module(self.model.modality_postprocessors, module_name="postprocessors",
@@ -225,7 +232,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
     parser.add_argument("--seed", type=int, default=43, help="Random seed for reproducibility")
     parser.add_argument("--device", type=str, default="cuda:2", help="Device to use for training ('cpu' or 'cuda')")
-    parser.add_argument("--datasets_dir", type=str, default="/data/air/pc/Mobile-Search-Engine/.datasets/one_imagenet",
+    parser.add_argument("--datasets_dir", type=str, default="/data/yx/dataset/imagenet",
                         help="Directory containing the datasets")
     parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full",
                         help="Directory to save the full model checkpoints")
@@ -235,8 +242,8 @@ def parse_args():
     parser.add_argument("--loggers_dir", type=str, default="./.logs", help="Directory to save the logs")
     parser.add_argument("--headless", action="store_true", help="Run in headless mode (Don't plot samples on start)")
 
-    parser.add_argument("--max_epochs", type=int, default=50, help="Maximum number of epochs to train")
-    parser.add_argument("--batch_size", type=int, default=8, help="Batch size for training and validation")
+    parser.add_argument("--max_epochs", type=int, default=21, help="Maximum number of epochs to train")
+    parser.add_argument("--batch_size", type=int, default=64, help="Batch size for training and validation")
     parser.add_argument("--lr", type=float, default=5e-6, help="Learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
     parser.add_argument("--momentum_betas", nargs=2, type=float, default=[0.9, 0.95],
@@ -246,19 +253,17 @@ def parse_args():
     parser.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading")
     parser.add_argument("--self_contrast", action="store_true", help="Use self-contrast on the image modality")
 
-    parser.add_argument("--lora", action="store_true", default=True,help="Use LoRA")
-    #parser.add_argument("--lora", action="store_true", help="Use LoRA")
-    parser.add_argument("--lora", action="store_true", default=True,help="Use LoRA")
-    #parser.add_argument("--lora", action="store_true", help="Use LoRA")
+    
+    parser.add_argument("--lora", default=True, action="store_true", help="Use LoRA")
     parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
-    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/550_epochs_lora",
+    parser.add_argument("--lora_checkpoint_dir", type=str, default="./.checkpoints/lora/2--32/imagenet_6",
                         help="Directory to save LoRA checkpoint")
-    parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision", "text"],
+    parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision"],
                         choices=["vision", "text", "audio", "thermal", "depth", "imu"],
                         help="Modality names to apply LoRA")
     parser.add_argument("--lora_layer_idxs", nargs="+", type=int,
                         help="Layer indices to apply LoRA")
-    parser.add_argument("--lora_layer_idxs_vision", nargs="+", type=int,
+    parser.add_argument("--lora_layer_idxs_vision", nargs="+", type=int,default=[1,2,3,4,5],
                         help="Layer indices to apply LoRA for vision modality. Overrides lora_layer_idxs if specified")
     parser.add_argument("--lora_layer_idxs_text", nargs="+", type=int,
                         help="Layer indices to apply LoRA for text modality. Overrides lora_layer_idxs if specified")
@@ -367,6 +372,25 @@ if __name__ == "__main__":
             lora_modality_names.append(modality_type)
         else:
             raise ValueError(f"Unknown modality name: {modality_name}")
+    
+
+    sub_lora_modality_names=[]
+    sub_lora_layer_idxs=[]
+    all_sub_lora_layer_idxs = [
+                            [1],
+                               #[],
+                               #[6,7,8,9,10,11],
+                               ]
+    for i in range(len(all_sub_lora_layer_idxs)):
+        one_idxs = {}
+        one_names = []
+        for modality_name in args.lora_modality_names:
+            if modality_name in modalities:
+                modality_type = getattr(ModalityType, modality_name.upper())
+                one_idxs[modality_type] = all_sub_lora_layer_idxs[i]
+                one_names.append(modality_type)
+        sub_lora_layer_idxs.append(one_idxs)
+        sub_lora_modality_names.append(one_names)
 
     # Train dataset
     model = ImageBindTrain(max_epochs=args.max_epochs, batch_size=args.batch_size, lr=args.lr,
@@ -376,7 +400,10 @@ if __name__ == "__main__":
                            lora=args.lora, lora_rank=args.lora_rank, lora_checkpoint_dir=args.lora_checkpoint_dir,
                            lora_layer_idxs=lora_layer_idxs if lora_layer_idxs else None,
                            lora_modality_names=lora_modality_names if lora_modality_names else None,
-                           linear_probing=args.linear_probing, text_list=test_dataset.text_list)
+                           linear_probing=args.linear_probing, text_list=test_dataset.text_list,
+                           sub_lora_checkpoint_dir=['./.checkpoints/lora/2--32/imagenet_2'],
+                           sub_lora_modality_names=sub_lora_modality_names,
+                           sub_lora_layer_idxs=sub_lora_layer_idxs)
 
     if args.full_model_checkpointing:
         checkpointing = {"enable_checkpointing": args.full_model_checkpointing,
@@ -388,9 +415,10 @@ if __name__ == "__main__":
     #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
     
     trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
-                      devices=[3], deterministic=True,
+                      devices=[0,1,2,3], deterministic=True,
                       max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
-                      logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true')
+                      logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true',
+                      check_val_every_n_epoch=3)
 
     trainer.fit(model, train_loader, val_loader)
 
