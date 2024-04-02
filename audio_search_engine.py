@@ -68,7 +68,7 @@ parser = argparse.ArgumentParser(description="Your script description")
 
 # parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
 parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
-parser.add_argument("--audio_num_blocks", default=12,type=int, help="Number of audio blocks")
+parser.add_argument("--audio_num_blocks", default=1,type=int, help="Number of audio blocks")
 parser.add_argument("--text_num_blocks", default=24,type=int, help="Number of text blocks")
 
 # 解析命令行参数
@@ -132,9 +132,10 @@ def run_inference():
             #     'audio_embeddings': embeddings[ModalityType.AUDIO]
             # }, f'embeddings_{a_block}.pth')
             # # # 加载保存的内容
-            checkpoint = torch.load(f'embeddings_{a_block}.pth')
+            checkpoint = torch.load(f'embeddings_{a_block}_trunks.pth')
             # 获取模型参数和张量
             embeddings[ModalityType.AUDIO]= checkpoint['audio_embeddings']
+            print(1)
 
 
     with torch.no_grad():

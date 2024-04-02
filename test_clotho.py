@@ -42,14 +42,14 @@ audio_path=["/data/air/pc/Mobile-Search-Engine/datasets/clotho/evaluation/"+file
 #text_num_blocks=args.text_num_blocks
 #device = args.device
 
-audio_num_blocks=1
+vision_num_blocks=24
 
-device_ids = [4] 
+device_ids = [3] 
 device = "cuda:5" if torch.cuda.is_available() else "cpu"
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-model = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=audio_num_blocks)
+model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
 v_block=len(model.modality_trunks["vision"].blocks)
 t_block=len(model.modality_trunks["text"].blocks)
 a_block=len(model.modality_trunks["audio"].blocks)
@@ -136,8 +136,8 @@ def run_inference():
     count_ones_r10 = np.sum(counts_r10 == 1)
     r1=count_ones_r1/len(counts_r1)
     r10=count_ones_r10/len(counts_r1)
-    np.savetxt(f'./results/clotho_t2a/R1/t{t_block}_a{a_block}_acc{r1}.txt',counts_r1,fmt='%d')
-    np.savetxt(f'./results/clotho_t2a/R10/t{t_block}_a{a_block}_acc{r10}.txt',counts_r10,fmt='%d')
+    np.savetxt(f'./results/clotho_t2a/R1/t{t_block}_a{v_block}_acc{r1}.txt',counts_r1,fmt='%d')
+    np.savetxt(f'./results/clotho_t2a/R10/t{t_block}_a{v_block}_acc{r10}.txt',counts_r10,fmt='%d')
     
     return r1,r10
 

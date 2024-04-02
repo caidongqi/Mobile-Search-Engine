@@ -5,13 +5,12 @@ import torch.nn.functional as F
 # 遍历 audio_num_blocks 的值从 1 到 12 1,5 5,9  9,12    
 
 
-for text_num_blocks in range(1,9):
+for audio_num_blocks in range(8,33):
     # 构建执行命令
-   
-    
+    device = "cuda:4" if torch.cuda.is_available() else "cpu"
     #command = f"python test_vgg.py {audio_num_blocks} "
     #python test_vgg.py --text_num_blocks 8 --device "cuda:0"
-    command = f"python audio_search_engine.py --text_num_blocks {text_num_blocks} "
+    command = f"python predict_method3_image.py --device {device} --layer_num {audio_num_blocks} "
     result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     # parameter=one_image.total_params
     if result.returncode == 0:

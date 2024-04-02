@@ -53,8 +53,8 @@ parser = argparse.ArgumentParser(description="Your script description")
 #parser.add_argument("audio_num_blocks", type=int, help="Number of audio blocks")
 
 # parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
-parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
-parser.add_argument("--vision_num_blocks", default=32,type=int, help="Number of audio blocks")
+parser.add_argument("--device", type=str, default="cuda:3", help="Device to use (cuda:2 or cpu)")
+parser.add_argument("--vision_num_blocks", default=24,type=int, help="Number of audio blocks")
 # 解析命令行参数
 args = parser.parse_args()
 

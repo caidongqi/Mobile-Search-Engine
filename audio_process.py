@@ -5,6 +5,7 @@ import torchvision
 import torchmetrics
 import torch.nn as nn
 from models import imagebind_model
+from models import imagebind_model_only_trunks
 from models.imagebind_model import ModalityType, load_module
 from models import lora as LoRA
 import pandas as pd
@@ -46,12 +47,12 @@ audio_num_blocks=args.audio_num_blocks
 
 audio_num_blocks_1=audio_num_blocks
 audio_num_blocks_2=12
-device_ids = [1,2,3,4] 
+device_ids = [1,3,4,5] 
 device = "cuda:6" if torch.cuda.is_available() else "cpu"
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-model_1 = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=audio_num_blocks_1)
+model_1 = imagebind_model_only_trunks.imagebind_huge(pretrained=True,audio_num_blocks=audio_num_blocks_1)
 #model_2 = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=audio_num_blocks_2)
 v_block=len(model_1.modality_trunks["vision"].blocks)
 t_block=len(model_1.modality_trunks["text"].blocks)
@@ -76,4 +77,4 @@ with torch.no_grad():
     # 假设你想要保存模型参数和张量
     torch.save({
         'audio_embeddings': embeddings[ModalityType.AUDIO]
-    }, f'embeddings_{a_block}.pth')
+    }, f'embeddings_{a_block}_trunks.pth')
