@@ -25,3 +25,7 @@ embeddings_11.pth
 embeddings_12.pth
 short_list.json
 topk-clotho.xlsx
+*.log
+tmp/groups_dict_1
+models/tokens_tmp.pt
+audioData.npy

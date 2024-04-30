@@ -17,6 +17,7 @@
 
 
 ## Environment Installation
+git clone 
 ### ImageBind
 Install pytorch 1.13+ and other 3rd party dependencies.
 

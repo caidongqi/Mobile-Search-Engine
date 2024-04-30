@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, trunc_normal_
 
+import os
 
 class Attention(nn.Module):
     def __init__(
@@ -249,32 +250,56 @@ class SimpleTransformer(nn.Module):
         use_checkpoint: bool = False,
         checkpoint_every_n: int = 1,
         checkpoint_blk_ids: Optional[List[int]] = None,
+        ee: int = 100,
+        re_enter: int = 0,
     ):
         """
         Inputs
         - tokens: data of shape N x L x D (or L x N x D depending on the attention implementation)
         - attn: mask of shape L x L
+        - ee: early exit layers
+        - re_enter: the re-enter layer index
 
         Output
         - x: data of shape N x L x D (or L x N x D depending on the attention implementation)
         """
-        if self.pre_transformer_layer:
-            tokens = self.pre_transformer_layer(tokens)
-        if use_checkpoint and checkpoint_blk_ids is None:
-            checkpoint_blk_ids = [
-                blk_id
-                for blk_id in range(len(self.blocks))
-                if blk_id % checkpoint_every_n == 0
-            ]
-        if checkpoint_blk_ids:
-            checkpoint_blk_ids = set(checkpoint_blk_ids)
-        for blk_id, blk in enumerate(self.blocks):
-            if use_checkpoint and blk_id in checkpoint_blk_ids:
-                tokens = checkpoint.checkpoint(
-                    blk, tokens, attn_mask, use_reentrant=False
-                )
-            else:
-                tokens = blk(tokens, attn_mask=attn_mask)
+        save_dir = "/data/cdq/current_project/Mobile-Search-Engine/models"
+        if not re_enter:
+            if self.pre_transformer_layer:
+                tokens = self.pre_transformer_layer(tokens)
+            if use_checkpoint and checkpoint_blk_ids is None:
+                checkpoint_blk_ids = [
+                    blk_id
+                    for blk_id in range(len(self.blocks))
+                    if blk_id % checkpoint_every_n == 0
+                ]
+            if checkpoint_blk_ids:
+                checkpoint_blk_ids = set(checkpoint_blk_ids)
+            for blk_id, blk in enumerate(self.blocks):
+                if blk_id > ee:
+                    break
+                if use_checkpoint and blk_id in checkpoint_blk_ids:
+                    tokens = checkpoint.checkpoint(
+                        blk, tokens, attn_mask, use_reentrant=False
+                    )
+                else:
+                    tokens = blk(tokens, attn_mask=attn_mask)
+                if not os.path.exists(os.path.join(save_dir,"tokens_tmp.pt")): # for future re-entering
+                    torch.save(tokens, os.path.join(save_dir,"tokens_tmp.pt"))
+        else:
+            for blk_id, blk in enumerate(self.blocks):
+                if blk_id < re_enter:
+                    continue
+                if blk_id > ee:
+                    break
+                tokens = torch.load(os.path.join(save_dir,"tokens_tmp.pt"))
+                if use_checkpoint and blk_id in checkpoint_blk_ids:
+                    tokens = checkpoint.checkpoint(
+                        blk, tokens, attn_mask, use_reentrant=False
+                    )
+                else:
+                    tokens = blk(tokens, attn_mask=attn_mask)
+            
         if self.post_transformer_layer:
             tokens = self.post_transformer_layer(tokens)
         return tokens

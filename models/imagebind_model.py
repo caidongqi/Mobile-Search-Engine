@@ -475,22 +475,79 @@ class ImageBindModel(nn.Module):
 
         return outputs
 
+class ElasticImageBindModel(ImageBindModel):
+    def forward(self, inputs, ee = 100, re_enter=0):
+        """
+        Forward pass of the elastic ImageBindModel.
 
-def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
-                   vision_num_heads=16,text_embed_dim=1024,text_num_blocks=24,
-                   text_num_heads=16,out_embed_dim=1024,audio_drop_path=0.1,imu_drop_path=0.7,audio_num_blocks=12):
-    model = ImageBindModel(
-        vision_embed_dim=vision_embed_dim,
-        vision_num_blocks=vision_num_blocks,
-        vision_num_heads=vision_num_heads,
-        text_embed_dim=text_embed_dim,
-        text_num_blocks=text_num_blocks,
-        text_num_heads=text_num_heads,
-        out_embed_dim=out_embed_dim,
-        audio_drop_path=audio_drop_path,
-        imu_drop_path=imu_drop_path,
-        audio_num_blocks=audio_num_blocks
-    )
+        Args:
+            inputs (dict): A dictionary containing input data for different modalities.
+            ee (int): The number of early-exit layers.
+            re_enter (int): The number of re-entries.
+
+        Returns:
+            dict: A dictionary containing the outputs for each modality.
+        """
+        outputs = {}
+        for modality_key, modality_value in inputs.items():
+            reduce_list = (
+                modality_value.ndim >= 5
+            )  # Audio and Video inputs consist of multiple clips
+            if reduce_list:
+                B, S = modality_value.shape[:2]
+                modality_value = modality_value.reshape(
+                    B * S, *modality_value.shape[2:]
+                )
+
+            if modality_value is not None:
+                modality_value = self.modality_preprocessors[modality_key](
+                    **{modality_key: modality_value}
+                )
+                trunk_inputs = modality_value["trunk"]
+                head_inputs = modality_value["head"]
+                modality_value = self.modality_trunks[modality_key](**trunk_inputs, ee=ee, re_enter=re_enter)
+                modality_value = self.modality_heads[modality_key](
+                    modality_value, **head_inputs
+                )
+                modality_value = self.modality_postprocessors[modality_key](
+                    modality_value
+                )
+
+                # CDQ: remove to avoid bugs in the , it does not affect the latency.
+                if not re_enter:
+                    if reduce_list:
+                        modality_value = modality_value.reshape(B, S, -1)
+                        modality_value = modality_value.mean(dim=1)
+
+                outputs[modality_key] = modality_value
+
+        return outputs
+
+def imagebind_huge(pretrained=False, elastic=False):
+    if elastic:
+        model = ElasticImageBindModel(
+            vision_embed_dim=1280,
+            vision_num_blocks=32,
+            vision_num_heads=16,
+            text_embed_dim=1024,
+            text_num_blocks=24,
+            text_num_heads=16,
+            out_embed_dim=1024,
+            audio_drop_path=0.1,
+            imu_drop_path=0.7,
+        )
+    else:
+        model = ImageBindModel(
+            vision_embed_dim=1280,
+            vision_num_blocks=32,
+            vision_num_heads=16,
+            text_embed_dim=1024,
+            text_num_blocks=24,
+            text_num_heads=16,
+            out_embed_dim=1024,
+            audio_drop_path=0.1,
+            imu_drop_path=0.7,
+        )
 
     if pretrained:
         if not os.path.exists(".checkpoints/imagebind_huge.pth"):
