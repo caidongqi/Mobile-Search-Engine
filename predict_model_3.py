@@ -38,63 +38,39 @@ class ConvNet(nn.Module):
         x = F.relu(self.fc1(x))      
         x = self.fc2(x)      
         return F.log_softmax(x, dim=1)     
-# Function to create the model
-# def create_model(input_shape,num_classes):
-#     model = models.Sequential()
 
-#     # 卷积层
-#     model.add(layers.Conv1D(32, kernel_size=3, activation='relu', input_shape=input_shape))
-#     model.add(layers.MaxPooling1D(pool_size=2))
-
-#     model.add(layers.Conv1D(64, kernel_size=3, activation='relu'))
-#     model.add(layers.MaxPooling1D(pool_size=2))
-
-#     model.add(layers.Conv1D(128, kernel_size=3, activation='relu'))
-#     model.add(layers.MaxPooling1D(pool_size=2))
-
-#     # 将卷积层的输出展平为一维向量
-#     model.add(layers.Flatten())
-
-#     # 全连接层
-#     model.add(layers.Dense(128, activation='relu'))
-#     model.add(layers.Dense(num_classes, activation='softmax'))  # 多分类任务，使用softmax作为输出层激活函数
-
-#     return model
-# 初始化模型
-# device = "cuda:3" if torch.cuda.is_available() else "cpu"
-# input_size = 1024  # 根据embedding的大小确定输入层大小
-# output_size = 12  # 根据层数的范围确定输出层大小
-# model = MyModel(input_size, output_size)
-# model.to(device)
-# # 定义损失函数和优化器
-# criterion = nn.CrossEntropyLoss()
-# optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 import os
 # 加载数据
 import argparse
 
 # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-
-# 添加命令行参数
-#parser.add_argument("audio_num_blocks", type=int, help="Number of audio blocks")
-
-# parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
 parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
-parser.add_argument("--layer_num", default=1,type=int, help="Number of audio blocks")
+parser.add_argument("--layer_num", default=2,type=int, help="Number of layers")
+parser.add_argument("--S", default=60,type=int, help="Number of S")
+parser.add_argument("--split", default='train',type=str, help="train or val")
 # 解析命令行参数
 args = parser.parse_args()
 
 # 获取 audio_num_blocks 的值
 layer_num=args.layer_num
+S=args.S
+split=args.split
 device = args.device
 
 #layer_num = 1
-root = "./parameters/audio/trunks+post"
+root = f"parameters/image/lora/trunks_{split}"
+model_path=f'parameters/image/lora/trunks_{split}/model'
+file = f'results/imagenet/lora_{split}/R{S}/layers.txt'
 embeddings_dict = {}
 
 for i in range(1, layer_num + 1):
-    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}.pth'))['audio_embeddings']
+    if split=='train':
+        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_train.pth'))['audio_embeddings']
+    
+    else:
+         embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}.pth'))['audio_embeddings']
+    
 
 embeddings_list = []
 
@@ -102,16 +78,20 @@ embeddings_list = []
 for i in range(1, layer_num + 1):
     embeddings_list.append(embeddings_dict[str(i)].cpu().numpy())
 
+for i, embedding in enumerate(embeddings_list):
+    print(f"Shape of embeddings_list[{i}]: {embedding.shape}")
+
 concatenated_embeddings = np.stack(embeddings_list, axis=1)
 
-file = './results/clotho/R10/layers_min_new.txt'
+
 layers = np.loadtxt(file)
 X_train, X_test, y_train, y_test = train_test_split(concatenated_embeddings, layers, test_size=0.2, random_state=42)
 
 # Initialize the model
 device = "cuda:3" if torch.cuda.is_available() else "cpu"
 input_size = layer_num  # Assuming input size
-model = ConvNet(input_size, 12)  # Input shape modified to match the input size
+outputs_label=32
+model = ConvNet(input_size, outputs_label)  # Input shape modified to match the input size
 model.to(device)
 
 # Define loss function and optimizer
@@ -157,11 +137,11 @@ with torch.no_grad():
     accuracy = (predicted == torch.tensor(y_test).to(device)).sum().item() / len(y_test)
     print(f'Accuracy: {accuracy:.2f}')
     
-    with open('output3_audio.csv', 'a', newline='') as csvfile:
+    with open('output3_image.csv', 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
         header =  [f'layer{layer_num}' ]
         writer.writerow(header)
         row = [accuracy]
         writer.writerow(row)
     # Save model parameters
-   
+    torch.save(model.state_dict(), f'{model_path}/method3/image_{split}_R{S}_layer={layer_num}.pth')

@@ -2,7 +2,7 @@ import numpy as np
 import os
 
 filenames = ['t24_a{0}.txt'.format(i) for i in range(1,13)]
-files = [os.path.join('./results/clotho/R10',file) for file in filenames]
+files = [os.path.join('results/clotho/lora/text_nohead/R10',file) for file in filenames]
 counts = np.array([])
 counts = [np.loadtxt(file) for file in files]
 
@@ -100,4 +100,4 @@ plt.title('Matrix Plot of Inference Outcomes')
 plt.yticks(range(inference_methods), [f"layer {i+1}" for i in range(inference_methods)])
 
 # plt.show()
-plt.savefig('./results/clotho/12layer-R10.pdf')
+plt.savefig('./results/clotho/12layer-lora.pdf')

@@ -41,3 +41,6 @@ embeddings_12_trunks.pth
 shortlist_data.pkl
 *.pkl
 *.pth
+core.*
+*.out
+*.log

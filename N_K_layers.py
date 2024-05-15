@@ -1,0 +1,41 @@
+import subprocess
+import torch
+import numpy as np
+import torch.nn.functional as F
+# 遍历 audio_num_blocks 的值从 1 到 12 1,5 5,9  9,12    
+
+#topk1=[1,5, 10, 20, 30, 40, 50, 60,70,80,90,100,110,120,130,300,400,500,600,700,800,900,1000]
+
+for k in [1,5,10,30,50,80,100,130,300]:
+    # 构建执行命令
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    #command = f"python test_vgg.py {audio_num_blocks} "
+    #python test_vgg.py --text_num_blocks 8 --device "cuda:0"
+    command = f"python imagenet_mobile-search_engine_lora.py --K {k}  "
+    result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    # parameter=one_image.total_params
+    if result.returncode == 0:
+        
+        print(f"done")
+    else:
+        print(f"Command '{command}' failed with error: {result.stderr}")
+    
+
+
+# with open(txt_file_path, "w") as txtfile:
+#     for i in range(32):
+#         row_data = " ".join([f"{similarities[i, j]:.4f}" for j in range(32)])
+#         txtfile.write(f"Row {i+1}: {row_data}\n")
+
+# print(f"Similarities matrix saved to {txt_file_path}")
+
+    # try:
+    #     subprocess.run(command, shell=True, check=True)
+    # except subprocess.CalledProcessError as e:
+    #     print(f"Command '{command}' failed with error: {e}")
+    # importlib.reload(one_image)
+    # value= one_image.embed
+    # embeddings.append(value)
+    # embeddings=torch.stack([embeddings, value])
+    # embeddings=np.concatenate([embeddings,value])
+    

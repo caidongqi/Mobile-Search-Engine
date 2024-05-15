@@ -6,6 +6,7 @@ import torchvision
 import torchmetrics
 import pickle
 import math
+import itertools
 from models import imagebind_model,mlp
 from models.mlp import MyModel
 from models.imagebind_model import ModalityType, load_module
@@ -17,39 +18,62 @@ from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.nn.parallel import DataParallel
-from api.clotho_text2audio import ClothoTextDataset
+from api.imagenet import ImageNetDataset
 from api.clotho import ClothoDataset
 logging.basicConfig(level=logging.INFO, force=True)
 import os
 N=3
 K=1000
 
-csv_file_path = "/home/u2021010261/data/cdq/clotho/clotho_captions_evaluation.csv"
-data_dir="/home/u2021010261/data/cdq/clotho/evaluation"
-f_s=os.listdir(data_dir)
-print(len(f_s))
-pf=pd.read_csv(csv_file_path,sep=',') # 假设数据集以CSV文件形式提供
-text_list = pf[['caption_1', 'caption_2', 'caption_3', 'caption_4', 'caption_5']].values.flatten().tolist()
-audio_list=pf[['file_name']].values.flatten().tolist()
-audio_path=["/home/u2021010261/data/cdq/clotho/evaluation/"+file for file in audio_list]
+imagenet_datadir = "/home/u2021010261/data/yx/imagenet"
+data_transform = transforms.Compose(
+        [
+            transforms.Resize(
+                224, interpolation=transforms.InterpolationMode.BICUBIC
+            ),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=(0.48145466, 0.4578275, 0.40821073),
+                std=(0.26862954, 0.26130258, 0.27577711),
+            ),
+        ]
+    )
+test_ds1 = ImageNetDataset(datadir=imagenet_datadir, split="val", transform=data_transform)
+    #test_dl1=DataLoader(dataset=test_ds1, batch_size=64, shuffle=False, drop_last=False, num_workers=4, pin_memory=True, persistent_workers=True)
+test_dl1 = DataLoader(dataset=test_ds1, batch_size=1, shuffle=False, drop_last=False, num_workers=4, pin_memory=True, persistent_workers=True)
+num_samples = 5000
+test_dl = DataLoader(dataset=test_ds1, batch_size=64, shuffle=False, drop_last=False, num_workers=4, pin_memory=True, persistent_workers=True)
+
+test_dl = itertools.islice(test_dl, num_samples)
+    
+# csv_file_path = "/home/u2021010261/data/cdq/clotho/clotho_captions_evaluation.csv"
+# data_dir="/home/u2021010261/data/cdq/clotho/evaluation"
+# f_s=os.listdir(data_dir)
+# print(len(f_s))
+# pf=pd.read_csv(csv_file_path,sep=',') # 假设数据集以CSV文件形式提供
+# text_list = pf[['caption_1', 'caption_2', 'caption_3', 'caption_4', 'caption_5']].values.flatten().tolist()
+# audio_list=pf[['file_name']].values.flatten().tolist()
+# audio_path=["/home/u2021010261/data/cdq/clotho/evaluation/"+file for file in audio_list]
 embeddings={}
 device = "cuda:1" if torch.cuda.is_available() else "cpu"
 device_ids = [0,1,3,4,6,7] 
-Clotho_dataset = ClothoTextDataset(csv_file=csv_file_path,device=device)
-batch_size=128
-test_dl = DataLoader(dataset=Clotho_dataset, batch_size=batch_size, shuffle=False, drop_last=False,
-        num_workers=4, pin_memory=True, persistent_workers=True)
+# Clotho_dataset = ClothoTextDataset(csv_file=csv_file_path,device=device)
+# batch_size=128
+# test_dl = DataLoader(dataset=Clotho_dataset, batch_size=batch_size, shuffle=False, drop_last=False,
+#         num_workers=4, pin_memory=True, persistent_workers=True)
+
 
 
 
 # # 1.存储n层 n=1
 # N=1
-embedding_folder=f'parameters/audio/lora/embeddings_{N}.pth'
+embedding_folder=f'parameters/image/trunks+post/embeddings_{N}.pth'
 if os.path.exists(embedding_folder):
     with torch.no_grad():
             checkpoint = torch.load(embedding_folder)
             # 获取模型参数和张量
-            embeddings[ModalityType.AUDIO]= checkpoint['audio_embeddings']
+            embeddings[ModalityType.VISION]= checkpoint['audio_embeddings']
             print(1)
 
 else :
@@ -68,17 +92,12 @@ predict_model.to(device)
 predict_model.load_state_dict(torch.load('/home/u2021010261/pc/Mobile-Search-Engine/parameters/model/model_trunks12_parameters.pth'))
 models = []
 
-layers_folder=f"parameters/layers/clotho/layers_{N}.pkl"
+layers_folder=f"parameters/layers/imagenet/layers_{N}.pkl"
 if os.path.exists(layers_folder):
     # 打开数据文件
     with open(layers_folder, 'rb') as f:
         layers = pickle.load(f)
 else:
-    # for n in range(0, output_size ):
-    #     model = imagebind_model.imagebind_huge(pretrained=True, audio_num_blocks=n)
-    #     device1 = "cuda:0" if torch.cuda.is_available() else "cpu"
-    #     model.to(device_ids[math.ceil((n-1)/2)])
-    #     models.append(model)
     layers=[]
     for embedding_item in embeddings[ModalityType.AUDIO]:
             embedding_item=embedding_item.to(device)
@@ -89,19 +108,19 @@ else:
     with open(layers_folder, 'wb') as f:
         pickle.dump(layers, f)
         
-embedding_dynamic_folder=f'parameters/dynamic/audio/embeddings_{N}.pth'
+embedding_dynamic_folder=f'parameters/dynamic/image/embeddings_{N}.pth'
 if os.path.exists(embedding_dynamic_folder):
     embedding_dynamic={}
     with torch.no_grad():
             checkpoint = torch.load(embedding_dynamic_folder)
             # 获取模型参数和张量
-            embedding_dynamic[ModalityType.AUDIO]= checkpoint['audio_embeddings']
+            embedding_dynamic[ModalityType.VISION]= checkpoint['audio_embeddings']
             print(1)
 else:
     embedding_dynamic={}
     with torch.no_grad():
         for i in range(len(layers)):
-                parameter_embedding_folder=f'parameters/audio/trunks+post/embeddings_{layers[i]}.pth'
+                parameter_embedding_folder=f'parameters/image/trunks+post/embeddings_{layers[i]}.pth'
                 if os.path.exists(parameter_embedding_folder):
                     current_embeddings = torch.load(parameter_embedding_folder, map_location=torch.device('cuda'))['audio_embeddings'][i]
                     
@@ -113,19 +132,19 @@ else:
                     del current_embeddings
                     print(embedding_dynamic[ModalityType.AUDIO].shape)
                 else:
-                    print("no parameters/audio/trunks+post/embeddings_{layers[i]}.pth ")
-                    inputs = {
-                    ModalityType.AUDIO: data.load_and_transform_audio_data2(audio_path[i],device=device_ids[math.ceil((layers[i]-1)/2)])
-                    }
+                    print("no parameters/image/trunks+post/embeddings_{layers[i]}.pth ")
+                    # inputs = {
+                    # ModalityType.AUDIO: data.load_and_transform_audio_data2(audio_path[i],device=device_ids[math.ceil((layers[i]-1)/2)])
+                    # }
                     
-                    current_embeddings = models[layers[i]](inputs)[ModalityType.AUDIO]
+                    # current_embeddings = models[layers[i]](inputs)[ModalityType.AUDIO]
 
-                    if embedding_dynamic:
-                            embedding_dynamic[ModalityType.AUDIO] = torch.cat([embedding_dynamic[ModalityType.AUDIO], current_embeddings.unsqueeze(0).to(embedding_dynamic[ModalityType.AUDIO].device)], dim=0)
-                    else:
-                            embedding_dynamic[ModalityType.AUDIO] = current_embeddings.unsqueeze(0)
+                    # if embedding_dynamic:
+                    #         embedding_dynamic[ModalityType.AUDIO] = torch.cat([embedding_dynamic[ModalityType.AUDIO], current_embeddings.unsqueeze(0).to(embedding_dynamic[ModalityType.AUDIO].device)], dim=0)
+                    # else:
+                    #         embedding_dynamic[ModalityType.AUDIO] = current_embeddings.unsqueeze(0)
 
-                    del current_embeddings
+                    # del current_embeddings
         torch.save({
                 'audio_embeddings': embedding_dynamic[ModalityType.AUDIO]
             }, embedding_dynamic_folder)
@@ -150,20 +169,21 @@ for k in topk1:
     
 counts_r1=np.array([])
 counts_r10=np.array([])
-shortlist_folder=f"parameters/shortlist/clotho/shortlist_data_{N}.pkl"
+shortlist_folder=f"parameters/shortlist/imagenet/shortlist_data_{N}.pkl"
 if os.path.exists(shortlist_folder):
     with open(shortlist_folder, 'rb') as f:
         shortlist = pickle.load(f)
         shortlist_item = pickle.load(f)
     
 else:    
-    for batch_idx, (x, target) in enumerate(test_dl):
+    for batch_idx, (x, target,imgs) in enumerate(test_dl):
             target = target.to(device)
             inputs = {
-            ModalityType.TEXT: data.load_and_transform_text(x, device)
+            ModalityType.TEXT:  data.load_and_transform_text(test_ds1.text_list, device)
             }
-            fine_embeddings= fine_model(inputs)[ModalityType.TEXT].to(embedding_dynamic[ModalityType.AUDIO].device)
-            match_value_1 = fine_embeddings @ embedding_dynamic[ModalityType.AUDIO].T 
+            #fine_embeddings= fine_model(inputs)[ModalityType.TEXT].to(embedding_dynamic[ModalityType.AUDIO].device)
+            fine_embeddings= fine_model(inputs)[ModalityType.TEXT].to(embedding_dynamic[ModalityType.VISION].device)
+            match_value_1 = embedding_dynamic[ModalityType.VISION][batch_idx]@fine_embeddings.T
             result_1 = torch.softmax(match_value_1, dim=-1)
             _, predicted = torch.max(result_1, dim=-1)
             _, topk_indices = torch.topk(result_1, k=K, dim=-1)
@@ -193,16 +213,16 @@ else:
                         list=[]
                         list_item=[]
                         for item in row:
-                            list.append(audio_path[item])
+                            list.append(test_ds1.text_list[item])
                             list_item.append(item.item())
-                        shortlist[counts_r].append(list)
+                        #shortlist[counts_r].append(list)
                         shortlist_item[counts_r].append(list_item)
             
             # 假设你有一个文件路径用于保存数据
             file_path=os.path.dirname(shortlist_folder)
             # 保存 shortlist 和 shortlist_item 到本地文件
             with open(file_path, 'wb') as f:
-                pickle.dump(shortlist, f)
+                #pickle.dump(shortlist, f)
                 pickle.dump(shortlist_item, f)
 
             print("Data saved successfully to", file_path)
@@ -210,8 +230,8 @@ else:
 
 
 # 4 再次进行fine-grained embedding
-test_dl2 = DataLoader(dataset=Clotho_dataset, batch_size=1, shuffle=False, drop_last=False,
-             num_workers=4, pin_memory=True, persistent_workers=True)
+# test_dl2 = DataLoader(dataset=Clotho_dataset, batch_size=1, shuffle=False, drop_last=False,
+#              num_workers=4, pin_memory=True, persistent_workers=True)
 batch_size=1        
 counts_r1=np.array([])
 counts_r10=np.array([])
@@ -221,30 +241,40 @@ for k in topk1:
     if k<=K:
         counts_rs[f'counts_r{k}'] = np.array([])
 embeddings={}
-embeddings_12={}
+embeddings_all={}
 
 with torch.no_grad():
-        checkpoint = torch.load(f'parameters/audio/trunks+post/embeddings_12.pth')
+        checkpoint = torch.load(f'parameters/image/trunks+post/embeddings_32.pth')
         # 获取模型参数和张量
-        embeddings_12[ModalityType.AUDIO]= checkpoint['audio_embeddings']
+        embeddings_all[ModalityType.TEXT]= checkpoint['audio_embeddings']
         print(1)
 
-        for batch_idx, (x, target) in enumerate(test_dl2):
-            embeddings_AUDIO={}
+        for batch_idx, (x, target,imgs) in enumerate(test_dl):
+            embeddings_TEXT={}
+            text_list=[]
             target = target.to(device)
+            for item in shortlist_item[f'counts_r{K}'][batch_idx*batch_size]:
+                text_list.append(test_ds1.text_list[item])
             inputs = {
-                ModalityType.TEXT: data.load_and_transform_text(x, device)
+                ModalityType.TEXT: data.load_and_transform_text(text_list, device)
                 #ModalityType.AUDIO: data.load_and_transform_audio_data(shortlist[f'counts_r{K}'][batch_idx*batch_size],device=device)
             }
-            for item in shortlist_item[f'counts_r{K}'][batch_idx*batch_size]:
-                if embeddings_AUDIO:
-                    embeddings_AUDIO[ModalityType.AUDIO]=torch.cat([embeddings_AUDIO[ModalityType.AUDIO], embeddings_12['audio'][item].unsqueeze(0).to(embeddings_AUDIO[ModalityType.AUDIO].device)], dim=0)        
-                else:
-                    embeddings_AUDIO[ModalityType.AUDIO] = embeddings_12['audio'][item].unsqueeze(0)
-            embeddings = fine_model(inputs)
-            match_value_1 = embeddings[ModalityType.TEXT] @ embeddings_AUDIO[ModalityType.AUDIO].to(device).T 
+            
+        
+            
+            #fine_embeddings= fine_model(inputs)[ModalityType.TEXT].to(embedding_dynamic[ModalityType.AUDIO].device)
+            fine_embeddings= fine_model(inputs)[ModalityType.TEXT].to(embedding_dynamic[ModalityType.VISION].device)
+            match_value_1 = embedding_dynamic[ModalityType.VISION][batch_idx]@fine_embeddings.T
             result_1 = torch.softmax(match_value_1, dim=-1)
             _, predicted = torch.max(result_1, dim=-1)
+            _, topk_indices = torch.topk(result_1, k=K, dim=-1)
+            counts_r1 = np.concatenate([counts_r1, [int(predicted[i] == target[i].to(predicted.device)) for i in range(len(predicted))]])
+                # #counts_r1 = np.concatenate([counts_r1, [any(predicted[i] == target[i]) for i in range(len(predicted))]])
+                # #topk_indices=topk_indices.T
+            counts_r10=np.concatenate([counts_r10, [int(any(topk_indices[i] == target[i].to(predicted.device))) for i in range(len(target))]])
+            
+            
+    
             top_indices_list = [torch.topk(result_1, k=k, dim=-1)[1] if k <= K else None for k in topk1]
             r1=0
             r10=0

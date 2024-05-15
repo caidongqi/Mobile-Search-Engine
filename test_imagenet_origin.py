@@ -178,6 +178,8 @@ def run_inference():
             for k, top_indices, counts_r in zip(topk1, top_indices_list, counts_rs):
                 if k == 1:
                     counts_rs[counts_r] = np.concatenate([counts_rs[counts_r], [int(predicted[i] == target[i].to(predicted.device)) for i in range(len(predicted))]])
+                    #counts_rs[counts_r] = np.concatenate([counts_rs[counts_r], [int(predicted== target.to(predicted.device))]])
+                        
                 else:
                     counts_rs[counts_r] = np.concatenate([counts_rs[counts_r], [int(any(top_indices[i] == target[i].to(predicted.device))) for i in range(len(target))]])
 

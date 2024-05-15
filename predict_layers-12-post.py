@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import csv
+import os
 class MyModel(nn.Module):
     def __init__(self, input_size, output_size):
         super(MyModel, self).__init__()
@@ -19,33 +20,23 @@ class MyModel(nn.Module):
 # 初始化模型
 device = "cuda:1" if torch.cuda.is_available() else "cpu"
 input_size = 1024  # 根据embedding的大小确定输入层大小
-output_size = 13 # 根据层数的范围确定输出层大小
+output_size = 12 # 根据层数的范围确定输出层大小
 model = MyModel(input_size, output_size)
 model.to(device)
 # 定义损失函数和优化器
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+layer_num = 12
+root = "parameters/audio/lora"
+embeddings_dict = {}
+
+for i in range(1, layer_num + 1):
+    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_trunks.pth'),map_location=torch.device(device))['audio_embeddings']
+    print(embeddings_dict[str(i)].shape)
 
 # 加载数据
-layer_num = 12
-root = "/data/air/pc/Mobile-Search-Engine/parameters/audio/trunks+post"
-embeddings_dict = {
-    '1': torch.load(root + '/embeddings_1.pth')['audio_embeddings'],
-    '2': torch.load(root + '/embeddings_2.pth')['audio_embeddings'],
-    '3': torch.load(root + '/embeddings_3.pth')['audio_embeddings'],
-    '4': torch.load(root + '/embeddings_4.pth')['audio_embeddings'],
-    '5': torch.load(root + '/embeddings_5.pth')['audio_embeddings'],
-    '6': torch.load(root + '/embeddings_6.pth')['audio_embeddings'],
-    '7': torch.load(root + '/embeddings_7.pth')['audio_embeddings'],
-    '8': torch.load(root + '/embeddings_8.pth')['audio_embeddings'],
-    '9': torch.load(root + '/embeddings_9.pth')['audio_embeddings'],
-    '10': torch.load(root + '/embeddings_10.pth')['audio_embeddings'],
-    '11': torch.load(root + '/embeddings_11.pth')['audio_embeddings'],
-    '12': torch.load(root + '/embeddings_12.pth')['audio_embeddings']
-}
 
-
-file = '/data/air/pc/Mobile-Search-Engine/results/clotho/R10/layers_min_all.txt'
+file = 'results/clotho/lora/text_nohead/R10/layers_min_all.txt'
 layers = np.loadtxt(file)
 # print(layers)
 layers = np.concatenate(tuple((layers) for i in range(layer_num)), axis=0)
@@ -82,7 +73,7 @@ y_train_tensor = torch.tensor(y_train).long()
 
 # 训练模型
 num_epochs = 100
-batch_size = 32
+batch_size = 4
 for epoch in range(num_epochs):
     for i in range(0, len(X_train_tensor), batch_size):
         inputs = X_train_tensor[i:i+batch_size]
@@ -148,5 +139,5 @@ with torch.no_grad():
     # list=[""]
     # data=[]
     # 保存模型参数
-    torch.save(model.state_dict(), 'model_trunks12_parameters.pth')
+    torch.save(model.state_dict(), 'parameters/model/epoch5_lora/model_trunks12_parameters.pth')
    

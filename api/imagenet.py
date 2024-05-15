@@ -1009,14 +1009,14 @@ class ImageNetDataset(ImageNet):
             'ear, spike, capitulum',
             'toilet tissue, toilet paper, bathroom tissue',
         ]
-
+        
         self.device = device
         self.split = split
         super().__init__(datadir, split=split, transform=transform)
     
     def __getitem__(self, index: int):
         
-        images, target ,imgs= super().__getitem__(index)
+        images, target = super().__getitem__(index)
         # images.to(self.device)
         # texts = data.load_and_transform_text([self.text_list[target]], self.device
         
@@ -1026,4 +1026,4 @@ class ImageNetDataset(ImageNet):
         # if self.split == "val":
         #     target.to(self.device)
         #     return images, ModalityType.VISION, texts, ModalityType.TEXT, target
-        return images, target,str(imgs)
+        return images, target

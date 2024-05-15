@@ -16,11 +16,17 @@ class MyModel(nn.Module):
         x = self.fc3(x)
         return x
 
-# 初始化模型
-import torch
 
-device =torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device =torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+parser = argparse.ArgumentParser(description="Your script description")
+parser.add_argument("--S", default=90,type=int, help="Number of S")
+parser.add_argument("--split", default='train',type=int, help="train or val")
 
+# 解析命令行参数
+args = parser.parse_args()
+# 获取 audio_num_blocks 的值
+S=args.S
+split=args.split
 input_size = 1024  # 根据embedding的大小确定输入层大小
 output_size = 32  # 根据层数的范围确定输出层大小
 model = MyModel(input_size, output_size)
@@ -29,33 +35,18 @@ model.to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 import os
-layer_num = 24
-root = "/data/air/pc/Mobile-Search-Engine/parameters/image/trunks+post"
+layer_num = 32
+# root = "parameters/image/trunks+post"
+root=f"parameters/image/lora/trunks_{split}"
 embeddings_dict = {}
 
 for i in range(1, layer_num + 1):
-    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}.pth'))['audio_embeddings']
-
-# # 加载数据
-# layer_num = 12
-# root = "/data/air/pc/Mobile-Search-Engine/parameters/image/trunks+post"
-# embeddings_dict = {
-#     '1': torch.load(root + '/embeddings_1.pth')['audio_embeddings'],
-#     '2': torch.load(root + '/embeddings_2.pth')['audio_embeddings'],
-#     '3': torch.load(root + '/embeddings_3.pth')['audio_embeddings'],
-#     '4': torch.load(root + '/embeddings_4.pth')['audio_embeddings'],
-#     '5': torch.load(root + '/embeddings_5.pth')['audio_embeddings'],
-#     '6': torch.load(root + '/embeddings_6.pth')['audio_embeddings'],
-#     '7': torch.load(root + '/embeddings_7.pth')['audio_embeddings'],
-#     '8': torch.load(root + '/embeddings_8.pth')['audio_embeddings'],
-#     '9': torch.load(root + '/embeddings_9.pth')['audio_embeddings'],
-#     '10': torch.load(root + '/embeddings_10.pth')['audio_embeddings'],
-#     '11': torch.load(root + '/embeddings_11.pth')['audio_embeddings'],
-#     '12': torch.load(root + '/embeddings_12.pth')['audio_embeddings']
-# }
-
-
-layers = np.loadtxt('./results/imagenet/5000/R10/layers_min.txt')  
+    try:
+        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_{split}.pth'),map_location=torch.device(device))['audio_embeddings']
+    except:
+        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}.pth'),map_location=torch.device(device))['audio_embeddings']
+    
+layers = np.loadtxt(f'./results/imagenet/lora_{split}/R{S}/layers.txt')  
 # print(layers)
 layers = np.concatenate(tuple((layers) for i in range(layer_num)), axis=0)
 # 根据layers值获取对应的embeddings
@@ -71,19 +62,11 @@ for layer_value in range(1, layer_num+1):
 embeddings = torch.cat([tmp.to(device) for tmp in all_embeddings], dim=0)
 source_indicator = np.array(source_indicator)
 
-# Concatenating source indicator with layers
-#layers_with_source = np.column_stack((layers, source_indicator))
-
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test, source_train, source_test = train_test_split(embeddings,layers, source_indicator, test_size=0.2, random_state=42)
 
-
-
-#X_train, X_test, y_train, y_test = train_test_split(embeddings, layers, test_size=0.2, random_state=42)
 X_train=X_train.to(device)
 X_test=X_test.to(device)
-# X_test_1=X_test_1.to(device)
-# X_test_2=X_test_2.to(device)
 
 # 转换为Tensor
 X_train_tensor = torch.tensor(X_train).float()
@@ -145,17 +128,14 @@ with torch.no_grad():
         print(f'Accuracy for layer {layer_key}: {accuracy_dict[layer_key]:.2f}')
 
     # 将结果写入CSV文件
-    with open('output_image.csv', 'a', newline='') as csvfile:
+    with open(f'output_image_{split}.csv', 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
         header = ['error_bar'] + [f'layer{layer_key}' for layer_key in sorted(accuracy_dict.keys())]
         writer.writerow(header)
         row = [total_accuracy] + [accuracy_dict[layer_key] for layer_key in sorted(accuracy_dict.keys())]
         writer.writerow(row)
-        # # 逐行写入数据
-        # for row in zip(list, data):
-        #     writer.writerow(row)
-    # list=[""]
-    # data=[]
+       
     # 保存模型参数
-    torch.save(model.state_dict(), 'parameters/model/image.pth')
+    #model: N=32 lora S=10
+    torch.save(model.state_dict(), f'parameters/model/imagenet_{split}/image_S={S}.pth')
    
