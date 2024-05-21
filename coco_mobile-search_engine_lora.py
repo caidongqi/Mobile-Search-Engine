@@ -9,7 +9,8 @@ from models import lora as LoRA
 from torchvision import transforms
 from torch.utils.data import DataLoader
 import numpy as np
-from api.imagenet import ImageNetDataset
+from api.coco import CoCoDataset
+from api.coco_text2image import CoCo_t2i_Dataset
 import os
 import argparse
 import csv
@@ -23,7 +24,7 @@ logging.basicConfig(level=logging.INFO,
 parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--N", type=int, default=2, help="First get N embeddings")
 parser.add_argument("--Q", default=100,type=int, help="Fine grained embedding scope after query")
-parser.add_argument("--S", default=50,type=int, help="Number of S")
+parser.add_argument("--S", default=50,type=int, help="Grain for predict model, larger S, smaller average predicted layer")
 parser.add_argument("--split", default='val',type=str, help="train or val")
 parser.add_argument("--device", default='cuda:0',type=str, help="gpu device id (if applicable)")
 
@@ -32,22 +33,23 @@ N=args.N
 Q=args.Q
 S=args.S
 split=args.split
-version=7
+version=6
 # N=2
-# K=100
+# Q=100
 logging.info(f"N={N},Q={Q}")
 full_layer=32 #audio:12 image:32
 device = args.device if torch.cuda.is_available() else "cpu"
 
 
 # testset path
-imagenet_datadir = "/home/u2021010261/data/yx/imagenet"
+coco_annotation_file = "/home/u2021010261/share/pc/COCO/captions_val2017.json"
+coco_data_dir="/home/u2021010261/share/pc/COCO/val2017"
 #embedding path
 parameter_embedding_folder=f'parameters/image/lora/trunks' # e2e still use val
 #lora path
 lora_dir =f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/imagenet/step1/31'
 #predicter model path
-model_parameter=f'parameters/model/imagenet/image_R{S}.pth'
+model_parameter=f'parameters/model/imagenet/image_R{S}.pth' parameters/image/coco/model/image_S=1.pth
 
 
 coarse_embedding_path = f'{parameter_embedding_folder}/embeddings_{N}.pth'
@@ -75,9 +77,11 @@ data_transform = transforms.Compose(
         ]
     )
 
-test_ds = ImageNetDataset(datadir=imagenet_datadir, split=split, transform=data_transform)
 batch_size=32
-test_dl = DataLoader(dataset=test_ds, batch_size=batch_size, shuffle=False, drop_last=False, num_workers=4, pin_memory=False, persistent_workers=True)
+coco_annotation_file='/home/u2021010261/share/pc/COCO/captions_val2017.json'
+test_ds=CoCo_t2i_Dataset(datadir=coco_datadir, annFile=coco_annotation_file,transform=data_transform)
+test_dl = DataLoader(dataset=test_ds, batch_size=1, shuffle=False, drop_last=False, num_workers=4, pin_memory=True, persistent_workers=True)
+
 
  
 # Step 1: 存储N层
@@ -327,8 +331,7 @@ with torch.no_grad():
         
         target=[t.to(device) for t in target]
         print('batch_idx',batch_idx)
-        # print(shortlist_item[f'K={Q}'][batch_idx*batch_size])
-       
+        print(shortlist_item[f'K={Q}'][batch_idx*batch_size])
         for item in shortlist_item[f'K={Q}'][batch_idx*batch_size]:
             text_list.append(test_ds.text_list[item])
             cur_text_embeddings=text_embeddings[item]
@@ -338,19 +341,19 @@ with torch.no_grad():
                 embeddings_TEXT[ModalityType.TEXT]=cur_text_embeddings.unsqueeze(0)
             del cur_text_embeddings
         
-        
+        print(len(text_list))
         match_value = embeddings_all[ModalityType.VISION][batch_idx*batch_size]@embeddings_TEXT[ModalityType.TEXT].T 
-        # print(match_value.shape)
+        print(match_value.shape)
         result = torch.softmax(match_value, dim=-1)
         _, predicted = torch.max(result, dim=-1)
         _, topk_indices = torch.topk(result, k=Q, dim=-1)
         
         top_indices_list = [torch.topk(result, k=k, dim=-1)[1] if k <= Q else None for k in K_list]
-        # print(predicted)
-        # print(target)
-        # #print(shortlist_item[f'K={Q}'])
-        # print(Q)
-        # print(batch_idx)
+        print(predicted)
+        print(target)
+        #print(shortlist_item[f'K={Q}'])
+        print(Q)
+        print(batch_idx)
         predicted=torch.Tensor([shortlist_item[f'K={Q}'][batch_idx*batch_size][predicted]])
         
         for k, top_indices, item in zip(K_list, top_indices_list, K_image_correct_list_final):
@@ -359,23 +362,14 @@ with torch.no_grad():
             elif k<=Q:            
                 results_k=[]
                 for i_k in range(k):
-                    # print(top_indices[1])
-                    # print(top_indices.shape)
-                    # print(top_indices)
-                    # print(i_k)
-                    # print(k)
-                    # print(shortlist_item[f'K={Q}'][batch_idx])
+                
                     results_k.append(shortlist_item[f'K={Q}'][batch_idx][top_indices[i_k].item()])
-              
-                # print(results_k)
-                # print(target[0])
+             
                 t=target[0]
                 bool_list=[int(results_k[i] == t.item()) for i in range(len(results_k))]
                 flag = 1 if any(bool_list) else 0
-                # print(flag)
-                # print(K_image_correct_list_final[item])
-                K_image_correct_list_final[item] = np.concatenate([K_image_correct_list_final[item],[flag]])
-                
+                K_image_correct_list_final[item] = np.concatenate([K_image_correct_list_final[item],flag])
+                exit(0)
             else :
                 break
 

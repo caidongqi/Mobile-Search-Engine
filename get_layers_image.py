@@ -13,7 +13,7 @@ import argparse
 
 # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-parser.add_argument("--S", default=90,type=int, help="Number of S")
+parser.add_argument("--S", default=10,type=int, help="Number of S")
 parser.add_argument("--split", default='train',type=str, help="train or val")
 
 # 解析命令行参数
@@ -27,9 +27,10 @@ def find_first_nonzero_row(array, column_index):
             return i
     return 33
 
-file_path=f'/home/u2021010261/pc/Mobile-Search-Engine/results/imagenet/lora_{split}/'
+#file_path=f'/home/u2021010261/pc/Mobile-Search-Engine/results/imagenet/lora_{split}'
+file_path=f'/home/u2021010261/share/pc/Mobile-Search-Engine/results/coco'
 filenames = ['v{0}_t24.txt'.format(i) for i in range(1,33)]
-files = [os.path.join(f'{file_path}R{S}',file) for file in filenames]
+files = [os.path.join(f'{file_path}/R{S}',file) for file in filenames]
 counts = np.array([])
 counts = [np.loadtxt(file) for file in files]
 vision_layers={}
@@ -45,6 +46,6 @@ for i in range(len(counts[0])):
 for i in range(len(counts[0])):
     if vision_max[i]==33:
         vision_max[i]=0
-np.savetxt(f'{file_path}R{S}/layers.txt',vision_max,fmt='%d')
+np.savetxt(f'{file_path}/R{S}/layers.txt',vision_max,fmt='%d')
     
         

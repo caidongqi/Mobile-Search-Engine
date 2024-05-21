@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import csv
+import argparse
 class MyModel(nn.Module):
     def __init__(self, input_size, output_size):
         super(MyModel, self).__init__()
@@ -20,7 +21,7 @@ class MyModel(nn.Module):
 device =torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--S", default=90,type=int, help="Number of S")
-parser.add_argument("--split", default='train',type=int, help="train or val")
+parser.add_argument("--split", default='train',type=str, help="train or val")
 
 # 解析命令行参数
 args = parser.parse_args()
@@ -37,16 +38,16 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 import os
 layer_num = 32
 # root = "parameters/image/trunks+post"
-root=f"parameters/image/lora/trunks_{split}"
+root=f"parameters/image/coco"
 embeddings_dict = {}
 
 for i in range(1, layer_num + 1):
     try:
-        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_{split}.pth'),map_location=torch.device(device))['audio_embeddings']
+        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_{split}.pth'),map_location=torch.device(device))['vision_embeddings']
     except:
-        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}.pth'),map_location=torch.device(device))['audio_embeddings']
+        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}.pth'),map_location=torch.device(device))['vision_embeddings']
     
-layers = np.loadtxt(f'./results/imagenet/lora_{split}/R{S}/layers.txt')  
+layers = np.loadtxt(f'./results/coco/R{S}/layers.txt')  
 # print(layers)
 layers = np.concatenate(tuple((layers) for i in range(layer_num)), axis=0)
 # 根据layers值获取对应的embeddings
@@ -137,5 +138,5 @@ with torch.no_grad():
        
     # 保存模型参数
     #model: N=32 lora S=10
-    torch.save(model.state_dict(), f'parameters/model/imagenet_{split}/image_S={S}.pth')
+    torch.save(model.state_dict(), f'parameters/image/coco/model/image_S={S}.pth')
    

@@ -59,9 +59,11 @@ split=args.split
 device = args.device
 
 #layer_num = 1
-root = f"parameters/image/lora/trunks_{split}"
-model_path=f'parameters/image/lora/trunks_{split}/model'
-file = f'results/imagenet/lora_{split}/R{S}/layers.txt'
+root = f"parameters/image/lora/trunks"
+#root = f"parameters/image/lora/trunks_{split}"
+model_path=f'parameters/image/lora/trunks/model'
+# model_path=f'parameters/image/lora/trunks_{split}/model'
+file = f'results/imagenet/lora_val/R{S}/layers.txt'
 embeddings_dict = {}
 
 for i in range(1, layer_num + 1):
