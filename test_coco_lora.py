@@ -23,14 +23,13 @@ import csv
 import argparse
 # # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-parser.add_argument("--vision_num_blocks", type=int,default=32, help="Number of audio blocks")
+parser.add_argument("--vision_num_blocks", type=int,default=32, help="Number of vision blocks")
 
 args = parser.parse_args()
 
 
 vision_num_blocks=args.vision_num_blocks
 
-device_ids = [3] 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -58,7 +57,7 @@ CoCo_dataset = CoCo_t2i_Dataset(json_file=coco_annotation_file,datadir=data_dir,
 test_dl = DataLoader(dataset=CoCo_dataset, batch_size=64, shuffle=False, drop_last=False,
         num_workers=4, pin_memory=True, persistent_workers=True)
 
-coco_embedding_path=f'parameters/image/coco/embeddings_{v_block}.pth'
+coco_embedding_path=f'parameters/image/coco/embeddings_{v_block}_true.pth'
 import pandas as pd
 def run_inference():    
     topk1=[1,5, 10, 20, 30, 40, 50, 60,70,80,90,100,110,120,130,300,400,500,600]
@@ -67,7 +66,7 @@ def run_inference():
                 counts_rs[f'counts_r{k}'] = np.array([])
     
     with torch.no_grad():
-        checkpoint = torch.load(coco_embedding_path)
+        checkpoint = torch.load(coco_embedding_path, map_location=device)
         vision_embeddings= checkpoint['vision_embeddings'] # TODO: audio_embeddings -> xx_embedding
         for batch_idx, (x, target) in enumerate(test_dl):
             target = target.to(device)
@@ -96,7 +95,7 @@ def run_inference():
           
             logging.info(f"batch_idx = {batch_idx}, r1={r1},r5={r5},r10={r10}, test_total = {data_length}")
         for k in topk1:
-            path=f'./results/coco/R{k}'
+            path=f'./results/coco_lora/R{k}'
             if not os.path.exists(path):
                 os.makedirs(path, exist_ok=True)
             file_path=os.path.join(path,f'v{v_block}_t{t_block}.txt')
@@ -107,7 +106,7 @@ def run_inference():
     data1 = [results, co_results]
 
     # # 指定CSV文件路径
-    csv_file_path = f'test_coco_zeroshot.csv'
+    csv_file_path = f'test_coco_zeroshot_lora.csv'
 
     with open(csv_file_path, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)

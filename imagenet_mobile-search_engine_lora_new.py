@@ -379,7 +379,7 @@ with torch.no_grad():
             else :
                 break
 
-    tested_image_length = len(K_image_correct_list['K=1'])
+    tested_image_length = len(K_image_correct_list_final['K=1'])
     r1=(np.sum(K_image_correct_list_final['K=1']))/tested_image_length 
     r5=(np.sum(K_image_correct_list_final['K=5']))/tested_image_length
     r10=(np.sum(K_image_correct_list_final['K=10']))/tested_image_length

@@ -33,7 +33,7 @@ N=args.N
 Q=args.Q
 S=args.S
 split=args.split
-version=1
+version=2 # version 1 is wrongly using imagenet's lora
 # N=2
 # Q=100
 logging.info(f"N={N},Q={Q}")
@@ -52,16 +52,16 @@ lora_dir = None # TODO load lora
 model_parameter=f'parameters/image/coco/model/image_S={S}.pth'
 
 
-coarse_embedding_path = f'{parameter_embedding_folder}/embeddings_{N}.pth' # TODO: currently, those embeddings are computed by models without lora tuning
-fine_model_embeddings = f'{parameter_embedding_folder}/embeddings_{full_layer}.pth'
+coarse_embedding_path = f'{parameter_embedding_folder}/embeddings_{N}_origin.pth' # TODO: currently, those embeddings are computed by models without lora tuning
+fine_model_embeddings = f'{parameter_embedding_folder}/embeddings_{full_layer}_origin.pth'
 text_embeddings_dir = f'{parameter_embedding_folder}/text_embeddings.pt'
 
 # dynamic embeddings
-coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/dynamic/N={N}_S={S}_v{version}.pth'
+coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/dynamic/N={N}_S={S}_v{version}_origin.pth'
 
 #save layers
-layers_path=f"{parameter_embedding_folder}/layers/N={N}_S={S}_v{version}.pkl"
-shortlist_path=f"{parameter_embedding_folder}/shortlist/shortlist_data_N={N}_S={S}_v{version}.pkl" # Different Q could share the same shortlist
+layers_path=f"{parameter_embedding_folder}/layers/N={N}_S={S}_v{version}_origin.pkl"
+shortlist_path=f"{parameter_embedding_folder}/shortlist/shortlist_data_N={N}_S={S}_v{version}_origin.pkl" # Different Q could share the same shortlist
 
 
 data_transform = transforms.Compose(
@@ -89,7 +89,7 @@ test_dl = DataLoader(dataset=test_ds, batch_size=batch_size, shuffle=False, drop
 coarse_embeddings={} # load from coarse_embedding_path
 if os.path.exists(coarse_embedding_path):
     with torch.no_grad():
-        checkpoint = torch.load(coarse_embedding_path)
+        checkpoint = torch.load(coarse_embedding_path,map_location=device)
         # 获取模型参数和张量
         coarse_embeddings[ModalityType.VISION]= checkpoint['vision_embeddings']
         logging.info('步骤1已加载')
@@ -150,7 +150,7 @@ else:
     coarse_embedding_dynamic={}
     with torch.no_grad():
         for i in range(len(layers)):
-            current_coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/embeddings_{layers[i]}.pth'
+            current_coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/embeddings_{layers[i]}_origin.pth'
             if os.path.exists(current_coarse_embedding_dynamic_path):
                 current_embeddings = torch.load(current_coarse_embedding_dynamic_path, map_location=torch.device(args.device))['vision_embeddings'][i]
                 if coarse_embedding_dynamic:
@@ -413,7 +413,7 @@ data1 = [
 ]
 
 # # 指定CSV文件路径
-csv_file_path = f'end_to_end_lora_N_K_S_COCO.csv'
+csv_file_path = f'end_to_end_lora_N_K_S_COCO_origin.csv'
 
 with open(csv_file_path, 'a', newline='') as csvfile:
     writer = csv.writer(csvfile)

@@ -41,9 +41,9 @@ root=f"parameters/image/coco"
 embeddings_dict = {}
 
 for i in range(1, layer_num + 1):
-    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_origin.pth'),map_location=torch.device(device))['vision_embeddings']
+    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_true.pth'),map_location=torch.device(device))['vision_embeddings']
     
-layers = np.loadtxt(f'./results/coco_origin/R{S}/layers.txt')  
+layers = np.loadtxt(f'./results/coco_lora/R{S}/layers.txt')  
 # print(layers)
 layers = np.concatenate(tuple((layers) for i in range(layer_num)), axis=0)
 # 根据layers值获取对应的embeddings
@@ -125,7 +125,7 @@ with torch.no_grad():
         print(f'Accuracy for layer {layer_key}: {accuracy_dict[layer_key]:.2f}')
 
     # 将结果写入CSV文件
-    with open(f'output_image_coco_origin.csv', 'a', newline='') as csvfile:
+    with open(f'model_coco_lora.csv', 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
         header = ['error_bar'] + [f'layer{layer_key}' for layer_key in sorted(accuracy_dict.keys())]
         writer.writerow(header)
@@ -134,5 +134,5 @@ with torch.no_grad():
        
     # 保存模型参数
     #model: N=32 lora S=10
-    torch.save(model.state_dict(), f'parameters/image/coco/model/image_S={S}_origin.pth')
+    torch.save(model.state_dict(), f'parameters/image/coco/model/image_S={S}_lora.pth')
    

@@ -47,21 +47,21 @@ coco_datadir="/home/u2021010261/share/pc/COCO/val2017"
 #embedding path
 parameter_embedding_folder=f'parameters/image/coco' # e2e still use val
 #lora path
-lora_dir = None # TODO load lora
+lora_dir = "/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/coco/progressive/e20/32"
 #predicter model path
 model_parameter=f'parameters/image/coco/model/image_S={S}.pth'
 
 
-coarse_embedding_path = f'{parameter_embedding_folder}/embeddings_{N}.pth' # TODO: currently, those embeddings are computed by models without lora tuning
-fine_model_embeddings = f'{parameter_embedding_folder}/embeddings_{full_layer}.pth'
+coarse_embedding_path = f'{parameter_embedding_folder}/embeddings_{N}_true.pth' # TODO: currently, those embeddings are computed by models without lora tuning
+fine_model_embeddings = f'{parameter_embedding_folder}/embeddings_{full_layer}_true.pth'
 text_embeddings_dir = f'{parameter_embedding_folder}/text_embeddings.pt'
 
 # dynamic embeddings
-coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/dynamic/N={N}_S={S}_v{version}.pth'
+coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/dynamic/N={N}_S={S}_v{version}_true.pth'
 
 #save layers
-layers_path=f"{parameter_embedding_folder}/layers/N={N}_S={S}_v{version}.pkl"
-shortlist_path=f"{parameter_embedding_folder}/shortlist/shortlist_data_N={N}_S={S}_v{version}.pkl" # Different Q could share the same shortlist
+layers_path=f"{parameter_embedding_folder}/layers/N={N}_S={S}_v{version}_true.pkl"
+shortlist_path=f"{parameter_embedding_folder}/shortlist/shortlist_data_N={N}_S={S}_v{version}_true.pkl" # Different Q could share the same shortlist
 
 
 data_transform = transforms.Compose(
@@ -150,7 +150,7 @@ else:
     coarse_embedding_dynamic={}
     with torch.no_grad():
         for i in range(len(layers)):
-            current_coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/embeddings_{layers[i]}.pth'
+            current_coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/embeddings_{layers[i]}_true.pth'
             if os.path.exists(current_coarse_embedding_dynamic_path):
                 current_embeddings = torch.load(current_coarse_embedding_dynamic_path, map_location=torch.device(args.device))['vision_embeddings'][i]
                 if coarse_embedding_dynamic:
@@ -324,7 +324,7 @@ else:
     ]
 
     # # 指定CSV文件路径
-    csv_file_path = f'end_to_end_lora_N_K_S_COCO.csv'
+    csv_file_path = f'end_to_end_lora_N_K_S_COCO_true.csv'
 
     with open(csv_file_path, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -413,7 +413,7 @@ data1 = [
 ]
 
 # # 指定CSV文件路径
-csv_file_path = f'end_to_end_lora_N_K_S_COCO.csv'
+csv_file_path = f'end_to_end_lora_N_K_S_COCO_true.csv'
 
 with open(csv_file_path, 'a', newline='') as csvfile:
     writer = csv.writer(csvfile)

@@ -45,7 +45,7 @@ import argparse
 
 # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-parser.add_argument("--device", type=str, default="cuda:0", help="Device to use (cuda:2 or cpu)")
+parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
 parser.add_argument("--layer_num", default=2,type=int, help="Number of layers")
 parser.add_argument("--S", default=60,type=int, help="Number of S")
 parser.add_argument("--split", default='train',type=str, help="train or val")

@@ -45,7 +45,7 @@ import argparse
 
 # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-parser.add_argument("--device", type=str, default="cuda:0", help="Device to use (cuda:2 or cpu)")
+parser.add_argument("--device", type=str, default="cuda:5", help="Device to use (cuda:2 or cpu)")
 parser.add_argument("--layer_num", default=2,type=int, help="Number of layers")
 parser.add_argument("--S", default=60,type=int, help="Number of S")
 parser.add_argument("--split", default='train',type=str, help="train or val")
@@ -59,20 +59,15 @@ split=args.split
 device = args.device
 
 #layer_num = 1
-root = f"parameters/image/lora/trunks"
+root = f"parameters/image/coco"
 #root = f"parameters/image/lora/trunks_{split}"
-model_path=f'parameters/image/lora/trunks/model'
+model_path=f'parameters/image/coco/model3'
 # model_path=f'parameters/image/lora/trunks_{split}/model'
-file = f'results/imagenet/lora_val/R{S}/layers.txt'
+file = f'results/coco_origin/R{S}/layers.txt'
 embeddings_dict = {}
 
 for i in range(1, layer_num + 1):
-    if split=='train':
-        embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_train.pth'))['audio_embeddings']
-    
-    else:
-         embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}.pth'))['audio_embeddings']
-    
+    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_origin.pth'))['vision_embeddings']
 
 embeddings_list = []
 
@@ -90,7 +85,7 @@ layers = np.loadtxt(file)
 X_train, X_test, y_train, y_test = train_test_split(concatenated_embeddings, layers, test_size=0.2, random_state=42)
 
 # Initialize the model
-device = "cuda:3" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 input_size = layer_num  # Assuming input size
 outputs_label=32
 model = ConvNet(input_size, outputs_label)  # Input shape modified to match the input size
@@ -139,11 +134,11 @@ with torch.no_grad():
     accuracy = (predicted == torch.tensor(y_test).to(device)).sum().item() / len(y_test)
     print(f'Accuracy: {accuracy:.2f}')
     
-    with open('output3_image.csv', 'a', newline='') as csvfile:
+    with open('coco_model3_origin.csv', 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
         header =  [f'layer{layer_num}' ]
         writer.writerow(header)
         row = [accuracy]
         writer.writerow(row)
     # Save model parameters
-    torch.save(model.state_dict(), f'{model_path}/method3/image_{split}_R{S}_layer={layer_num}.pth')
+    torch.save(model.state_dict(), f'{model_path}/coco_origin_R={S}_layer={layer_num}.pth')
