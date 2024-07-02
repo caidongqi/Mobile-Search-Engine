@@ -478,7 +478,7 @@ class ImageBindModel(nn.Module):
 
 def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
                    vision_num_heads=16,text_embed_dim=1024,text_num_blocks=24,
-                   text_num_heads=16,out_embed_dim=1024,audio_drop_path=0.1,imu_drop_path=0.7,audio_num_blocks=12):
+                   text_num_heads=16,out_embed_dim=1024,audio_drop_path=0.1,imu_num_blocks=6,imu_drop_path=0.7,audio_num_blocks=12):
     model = ImageBindModel(
         vision_embed_dim=vision_embed_dim,
         vision_num_blocks=vision_num_blocks,
@@ -489,7 +489,8 @@ def imagebind_huge(pretrained=False,vision_embed_dim=1280,vision_num_blocks=32,
         out_embed_dim=out_embed_dim,
         audio_drop_path=audio_drop_path,
         imu_drop_path=imu_drop_path,
-        audio_num_blocks=audio_num_blocks
+        audio_num_blocks=audio_num_blocks,
+        imu_num_blocks=imu_num_blocks
     )
 
     if pretrained:
@@ -524,10 +525,10 @@ def save_module(module_dict: nn.ModuleDict, module_name: str = "",
 
 def load_module(module_dict: nn.ModuleDict, module_name: str = "",
                 checkpoint_dir: str = "./.checkpoints/full", postfix: str = "_last",
-                extension: str = "pth"):
+                extension: str = "pth", device: str = 'cuda:0'):
     try:
         module_dict.load_state_dict(torch.load(
-                   os.path.join(checkpoint_dir, f"imagebind-{module_name}{postfix}.{extension}")), strict=False)
+                   os.path.join(checkpoint_dir, f"imagebind-{module_name}{postfix}.{extension}"), map_location=device), strict=False)
         logging.info(f"Loaded parameters for module {module_name} from {checkpoint_dir}.")
     except FileNotFoundError:
         logging.warning(f"Could not load module parameters for {module_name} from {checkpoint_dir}.")

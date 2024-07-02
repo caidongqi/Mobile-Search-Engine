@@ -1,3 +1,5 @@
+# Use predict model method B for inference
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

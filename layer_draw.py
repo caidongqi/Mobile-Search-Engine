@@ -1,8 +1,8 @@
 import numpy as np
 import os
 
-filenames = ['t24_a{0}.txt'.format(i) for i in range(1,13)]
-files = [os.path.join('results/clotho/lora/text_nohead/R10',file) for file in filenames]
+filenames = ['v{0}_t24.txt'.format(i) for i in range(1,33)]
+files = [os.path.join('results/flickr8k_lora_val_nohead/R1',file) for file in filenames]
 counts = np.array([])
 counts = [np.loadtxt(file) for file in files]
 
@@ -10,9 +10,10 @@ acc_list = []
 
 for i,file in enumerate(files):
     acc_list.append(np.sum(counts[i]==1)/len(counts[i]))
+    print(len(file))
     np.savetxt(file, counts[i], fmt='%i')
 
-print(acc_list)
+#print(counts)
 
 # for file in files:
 #     if len(counts) == 0:
@@ -49,14 +50,32 @@ def sort_matrix_by_ones(matrix):
 
     return sorted_matrix, original_column_indices[sorted_column_indices]
 
+def merge_columns(matrix):
+    #matrix = np.array(matrix)  # 将输入的矩阵转换为 NumPy 数组
+    rows, cols = matrix.shape
+    assert cols % 5 == 0, "矩阵的列数必须是5的倍数"
+    
+    # 创建合并后的矩阵
+    merged_cols = cols // 5
+    merged_matrix = np.zeros((rows, merged_cols), dtype=int)
+    
+    for i in range(merged_cols):
+        # 取出每组的五列
+        group = matrix[:, i*5:(i+1)*5]
+        # 计算每列的1的个数
+        ones_count = np.sum(group, axis=0)
+        # 选取1最多的列的索引
+        max_ones_index = np.argmax(ones_count)
+        # 将1最多的列赋值到合并后的矩阵中
+        merged_matrix[:, i] = group[:, max_ones_index]
+    
+    return merged_matrix
 
 
-
-print(filenames)
-print(np.array(counts))
+#sorted_counts=merge_columns(np.array(counts))
 sorted_matrix ,indices= sort_matrix_by_ones(np.array(counts))
 np.savetxt('./results/agnews-t-figure.txt', sorted_matrix, fmt='%i')
-np.savetxt('./results/clotho/sort.txt', indices, fmt='%i')
+np.savetxt('./results/coco_lora_val/sort.txt', indices, fmt='%i')
 
 
 
@@ -100,4 +119,4 @@ plt.title('Matrix Plot of Inference Outcomes')
 plt.yticks(range(inference_methods), [f"layer {i+1}" for i in range(inference_methods)])
 
 # plt.show()
-plt.savefig('./results/clotho/12layer-lora.pdf')
+plt.savefig('./results/flickr8k_lora_val_nohead/32layer-lora.pdf')

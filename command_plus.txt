@@ -1,0 +1,1 @@
+["python e2e_coco_lora_32_new_val_model_max.py --S 10 --N 7 --Q 10 ","python e2e_coco_lora_32_new_val_model_max.py --S 10 --N 7 --Q 20 ","python e2e_coco_lora_32_new_val_model_max.py --S 10 --N 8 --Q 10 ","python e2e_coco_lora_32_new_val_model_max.py --S 10 --N 8 --Q 5 "]

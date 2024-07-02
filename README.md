@@ -99,7 +99,38 @@ assuming the `--lora_checkpoint_dir` remains the same.
 In `test_imagent.py`, you can find an example of how to use the model for inference on ImageNet Dataset. To try the `LoRA` fine-tuned model, change `lora=True`, set the fine-tuned model's path `lora_dir` and the parameters in `LoRA.apply_lora_modality_trunks()` within the script. To try the original ImageBind model, set `lora=False`. And you can set the trunk blocks of each modlity when use `imagebind_model.imagebind_huge()`.
 
 
+## E2E 
+To construct an e2e system, you have 4 steps to go. In `run_dataset.py`, you can see the whole pipeline of clotho dataset,  the same pattern applies when using other datasets.
 
+### Step 1: Get every embedding of the data with different model layers.
+#### In our technique, we need to embed every data dynamically, so we need to prepare the embeddings of different model layers.
+In `get_embedding_cltho.py`, we can compute the embeddings of clotho dataset at a specific audio layer, so at step 1 in `run_dataset.py`, you need to iterate all the audio layers(form 1 to the whole audio layer of Imagebind).
+
+Parameters of `get_embedding_cltho.py`:
+Input: 
+--lora_layers 'defines the layer of the model'
+--lora dir 'the path of lora parameters'
+--embedding_dir 'the path to save the embeddings'
+--dataset 'the name to the dataset'
+
+### Step 2: Inference the dataset at different model layers to get the data prediction results.
+#### In this step, our goal is to get the prediction result of every single data in dataset, for example, at audio layer=7, the output result for a silgle data's R@N is 0, while at layer=9, it might be 1.
+In `test_clotho_val.py`, we compute all the predictions of a dataset at a certain model layer, the results are 0/1, '0' means false while '1' means correct. At step 2, we iterate all the layers from 1-full, then we get the whole results of every data at different layers.
+
+Parameters of `test_clotho_val.py`:
+Input: 
+--audio_num_blocks 'defines the layer of the model'
+--lora dir 'the path of lora parameters'
+--embedding_path 'the path to save the embeddings'
+--version 'the tag of the experiment, often contains the name of the dataset and the method of the experiment (lora or not, with lora head or not)'
+
+Output:
+txt files, often at 'results/clotho_head/R{N}'
+
+### Step3: Get the min layer of every data
+Use the the txt files to get the min layer that the result is 1.
+
+### Step4: Use the labels got in Step3 to dynamically embed th dataset and get the prediction results.
 
 
 # ImageBind: One Embedding Space To Bind Them All

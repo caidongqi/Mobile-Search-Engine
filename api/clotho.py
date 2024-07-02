@@ -31,27 +31,17 @@ class ClothoDataset(Dataset):
 
     def __getitem__(self, idx):
         # 根据索引获取单个样本
-        # sample = self.data.iloc[idx]
-        # audio=self.data
-        #dir_path=self.datadir[idx]
         dir=self.datadir[idx]
         dir_path = os.path.join(self.dir, self.datadir[idx])
         for row_number, row in self.data.iterrows():
             # 检查文件名是否在当前行的第一列
-            # names_id=dir[:11]
-            # names_num=dir[12:18]
             if row['file_name'].startswith(dir):
                 # 返回找到的行数
-                      #label = row['class']
-                      captions = self.data.iloc[row_number, 1:].values.tolist()
-                      index=[self.text_list.index(item) for item in captions]
-                      index=torch.tensor(index)
-                      #index = self.text_list.index(label)
-                      return dir_path,index
-        
-        
-        # 在这里可以进行数据转换操作，如果定义了 transform
-
+                captions = self.data.iloc[row_number, 1:].values.tolist()
+                index=[self.text_list.index(item) for item in captions]
+                index=torch.tensor(index)
+                #index = self.text_list.index(label)
+                return dir_path,index
         
 
 # # # 使用示例

@@ -68,6 +68,7 @@ def run_inference():
     with torch.no_grad():
         checkpoint = torch.load(coco_embedding_path, map_location=device)
         vision_embeddings= checkpoint['vision_embeddings'] # TODO: audio_embeddings -> xx_embedding
+        all_predictions = []
         for batch_idx, (x, target) in enumerate(test_dl):
             target = target.to(device)
             inputs = {
@@ -79,6 +80,7 @@ def run_inference():
             match_value_1 = embeddings[ModalityType.TEXT].to(vision_embeddings.device)@vision_embeddings.T 
             result_1 = torch.softmax(match_value_1, dim=-1)
             _, predicted = torch.max(result_1, -1)
+            all_predictions.append(predicted)
             top_indices_list = [torch.topk(result_1, k=k, dim=-1)[1] for k in topk1]
             
             for k, top_indices, counts_r in zip(topk1, top_indices_list, counts_rs):
@@ -94,6 +96,8 @@ def run_inference():
             r10=(np.sum(counts_rs['counts_r10']))/data_length
           
             logging.info(f"batch_idx = {batch_idx}, r1={r1},r5={r5},r10={r10}, test_total = {data_length}")
+        all_predictions = torch.cat(all_predictions)
+        torch.save(all_predictions, f'parameters/imagebind_targets/imagebind_{vision_num_blocks}.pt')
         for k in topk1:
             path=f'./results/coco_origin/R{k}'
             if not os.path.exists(path):

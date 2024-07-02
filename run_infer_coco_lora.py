@@ -1,17 +1,26 @@
 import os
 import time
 import logging
+import time
+
+# 获取当前时间的时间戳
+timestamp = time.time()
+# 将时间戳转换为本地时间
+local_time = time.localtime(timestamp)
+# 格式化本地时间
+formatted_time = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
 
 logging.basicConfig(level=logging.INFO,
                     format='%(process)d - %(asctime)s - %(levelname)s - %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
+                    handlers=[logging.FileHandler(f'logs/run/infer_{formatted_time}.log')], 
                     force=True)
 
-# print("Starting to sleep 30mins for waiting the end of embedding extraction")
-# time.sleep(1800)
-# print("Finished sleeping")
-
-for i in range(13,33):
-    command = f"python test_coco_lora.py --vision_num_blocks {i}"
+worker_num = 7
+for i in range(1,33):
+    if i%(worker_num-1)==0 and i!=0:
+        command = f"python test_coco_lora_nohead.py --vision_num_blocks {i} > logs/infer/infer-{i}.log 2>&1" # stop to run this command
+    else:
+        command = f"python test_coco_lora_nohead.py --vision_num_blocks {i} > logs/infer/infer-{i}.log 2>&1 &" # put it in the backend and run the next one concurrently
     logging.info(f"Running command: {command}")
     os.system(command)

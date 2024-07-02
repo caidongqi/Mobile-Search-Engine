@@ -87,7 +87,7 @@ concatenated_embeddings = np.stack(embeddings_list, axis=1)
 
 
 layers = np.loadtxt(file)
-X_train, X_test, y_train, y_test = train_test_split(concatenated_embeddings, layers, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(concatenated_embeddings, layers, test_size=\0.2, random_state=42)
 
 # Initialize the model
 device = "cuda:3" if torch.cuda.is_available() else "cpu"

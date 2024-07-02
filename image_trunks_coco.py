@@ -45,7 +45,7 @@ device = "cuda:0" if torch.cuda.is_available() else "cpu"
 lora=True
 linear_probing=False
 load_head_post_proc_finetuned=True
-lora_dir =f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/coco/progressive/e20/32'
+lora_dir=f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/coco/trunk/ratio3/e12/{lora_layers+1}'
 #lora_dir =f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/imagenet/step1/{vision_num_blocks}'
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -67,13 +67,13 @@ if lora:
     if load_head_post_proc_finetuned:
         # Load postprocessors & heads
         load_module(model_1.modality_postprocessors, module_name="postprocessors",
-                    checkpoint_dir=lora_dir)
+                    checkpoint_dir=lora_dir, device = device)
         load_module(model_1.modality_heads, module_name="heads",
-                    checkpoint_dir=lora_dir)
+                    checkpoint_dir=lora_dir, device = device)
 elif linear_probing:
     # Load heads
     load_module(model_1.modality_heads, module_name="heads",
-                checkpoint_dir=lora_dir)
+                checkpoint_dir=lora_dir, device = device)
  
 model_1=model_1.cuda()
 model_1 = model_1.to(device) 
@@ -132,6 +132,6 @@ with torch.no_grad():
     #embeddings[ModalityType.VISION] = torch.cat(embeddings_list, dim=1)
     torch.save({
         'vision_embeddings': embeddings[ModalityType.VISION]
-    }, f'parameters/image/coco/embeddings_{v_block}_true.pth')
+    }, f'parameters/image/coco/val/embeddings_{v_block}_trunk_lora.pth')
 
     

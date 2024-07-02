@@ -22,6 +22,11 @@ import os
 import csv
 import argparse
 # # 创建解析器
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(process)d - %(asctime)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    force=True)
 parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--vision_num_blocks", type=int,default=32, help="Number of vision blocks")
 
@@ -31,6 +36,8 @@ args = parser.parse_args()
 vision_num_blocks=args.vision_num_blocks
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
+load_head_post_proc_finetuned=True
+lora_dir=f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/coco/trunk/ratio3/e12/32'
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
@@ -41,9 +48,15 @@ a_block=len(model.modality_trunks["audio"].blocks)
 i_block=len(model.modality_trunks["imu"].blocks)
 
 
+# Load fine-tuned text heads
+load_module(model.modality_heads, module_name="heads",
+            checkpoint_dir=lora_dir, device =device)
+
+
 #
-model = DataParallel(model)
-model=model.cuda()
+# model = DataParallel(model)
+# model=model.cuda()
+model.to(device)
 model.eval()
 
 # coco_datadir="/home/u2021010261/share/pc/COCO/val2017"
@@ -53,28 +66,29 @@ model.eval()
 
 coco_annotation_file = "/home/u2021010261/share/pc/COCO/captions_val2017.json"
 data_dir="/home/u2021010261/share/pc/COCO/val2017"
-CoCo_dataset = CoCo_t2i_Dataset(json_file=coco_annotation_file,datadir=data_dir,device=device)
+
+# coco_annotation_file = "/home/u2021010261/share/pc/COCO/captions_val2017.json"
+# data_dir="/home/u2021010261/share/pc/COCO/val2017"
+
+CoCo_dataset = CoCo_t2i_Dataset(split="val",images_dir='/home/share/pc/COCO/val2017',caption_path='/home/share/pc/COCO/captions_val2017.json')
 test_dl = DataLoader(dataset=CoCo_dataset, batch_size=64, shuffle=False, drop_last=False,
         num_workers=4, pin_memory=True, persistent_workers=True)
 
-coco_embedding_path=f'parameters/image/coco/embeddings_{v_block}_true.pth'
+coco_embedding_path=f'parameters/image/coco/val/embeddings_{v_block}_trunk_lora.pth'
 import pandas as pd
 def run_inference():    
     topk1=[1,5, 10, 20, 30, 40, 50, 60,70,80,90,100,110,120,130,300,400,500,600]
     counts_rs = {}
     for k in topk1:
-                counts_rs[f'counts_r{k}'] = np.array([])
-    
+        counts_rs[f'counts_r{k}'] = np.array([])
     with torch.no_grad():
         checkpoint = torch.load(coco_embedding_path, map_location=device)
         vision_embeddings= checkpoint['vision_embeddings'] # TODO: audio_embeddings -> xx_embedding
         for batch_idx, (x, target) in enumerate(test_dl):
             target = target.to(device)
             inputs = {
-                ModalityType.TEXT: data.load_and_transform_text(x, device)
-                
+                ModalityType.TEXT: data.load_and_transform_text(x, device)   
             }
-
             embeddings = model(inputs)
             match_value_1 = embeddings[ModalityType.TEXT].to(vision_embeddings.device)@vision_embeddings.T 
             result_1 = torch.softmax(match_value_1, dim=-1)
@@ -86,16 +100,16 @@ def run_inference():
                     counts_rs[counts_r] = np.concatenate([counts_rs[counts_r], [int(predicted[i] == target[i].to(predicted.device)) for i in range(len(predicted))]])
                 else:
                     counts_rs[counts_r] = np.concatenate([counts_rs[counts_r], [int(any(top_indices[i] == target[i].to(predicted.device))) for i in range(len(target))]])
-
+            
             #logging.info(f"batch_idx = {batch_idx}, test_correct = {np.sum(counts_rs['counts_r1'] == 1)/len(counts_rs['counts_r1'])}, test_total = {np.sum(counts_rs['counts_r5'] == 1)/len(counts_rs['counts_r1'])}, Accuracy = {np.sum(counts_rs['counts_r10'] == 1)/len(counts_rs['counts_r1'])}")
             data_length=len(counts_rs['counts_r1'])
             r1=(np.sum(counts_rs['counts_r1']))/data_length
             r5=(np.sum(counts_rs['counts_r5']))/data_length
             r10=(np.sum(counts_rs['counts_r10']))/data_length
-          
+
             logging.info(f"batch_idx = {batch_idx}, r1={r1},r5={r5},r10={r10}, test_total = {data_length}")
         for k in topk1:
-            path=f'./results/coco_lora/R{k}'
+            path=f'./results/coco_lora_val/R{k}'
             if not os.path.exists(path):
                 os.makedirs(path, exist_ok=True)
             file_path=os.path.join(path,f'v{v_block}_t{t_block}.txt')
@@ -106,7 +120,7 @@ def run_inference():
     data1 = [results, co_results]
 
     # # 指定CSV文件路径
-    csv_file_path = f'test_coco_zeroshot_lora.csv'
+    csv_file_path = f'test_coco_zeroshot_lora_valset.csv'
 
     with open(csv_file_path, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)

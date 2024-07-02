@@ -8,63 +8,80 @@ import torch
 import torch.nn as nn
 import torchaudio
 import json
+from tqdm import tqdm
 class CoCo_t2i_Dataset(Dataset):
-    def __init__(self, json_file,device='cpu',datadir=''):
-        # 初始化操作，可以在这里加载数据集
-        self.dir=datadir
-        dataset = os.listdir(datadir)
-        self.datadir=sorted(dataset)
-        with open(json_file, 'r') as json_file:
-            self.data= json.load(json_file)
-        img_id=[]
-        self.annotations=self.data['annotations']
+    def __init__(self,caption_path:str=not None,split:str=not None,images_dir:str=not None,):        
+        imagepath_caption_list=[]
+        caption_list=[]
+        image_ids={}
+        image_count=0
+        pre_deal_file_path=f'coco_{split}_text_imagepath_pairs.list'
+        if not os.path.exists(pre_deal_file_path):
+            info=json.load(open(caption_path,mode='r'))
+            #info=self.data
+            images=info['images']
+            anotations=info['annotations']
+            for ano in tqdm(anotations):
+                image_id=ano['image_id']
+                caption=ano['caption']
+                caption_list.append(caption)
+                for image in images:
+                    id=image['id']
+                    file_name=image['file_name']
+                    if id==image_id:
+                        image_path=os.path.join(images_dir,file_name)
+                        if image_path not in image_ids:
+                            image_ids[image_path]=image_count
+                            image_count+=1
+                        imagepath_caption_list.append((caption,image_path))
+                        break
+            torch.save(imagepath_caption_list,pre_deal_file_path)
+        else:
+            imagepath_caption_list=torch.load(pre_deal_file_path)
         
-        img_maps={}
-        for i,item in enumerate(self.datadir):
-            img_maps[item]=i
-        self.img_maps=img_maps
+        image_item_list={}
+        image_item_file_path=f'coco_{split}_image_item_pairs.list'
+        if not os.path.exists(image_item_file_path):
+            dataset = os.listdir(images_dir)
+            self.datadir=sorted(dataset)
+            item=0
+            for image in self.datadir:
+                image_path=os.path.join(images_dir,image)
+                image_item_list[image_path]=item
+                item+=1
+            torch.save(image_item_list,image_item_file_path)
+        else:
+            image_item_list=torch.load(image_item_file_path)
         
-
-        text_maps={}
-        text_list=[]
-        for item in self.annotations:
-            text_maps[item['caption']]=item['image_id']
-            text_list.append(item['caption'])
-        self.text_list=text_list
-        self.text_maps=text_maps
-        self.device=device
+        self.image_item_list=image_item_list
+        self.captions=[]
+        self.images_paths=[]
+        for caption,image in imagepath_caption_list:
+            self.captions.append(caption)
+            self.images_paths.append(image)
 
     def __len__(self):
         # 返回数据集的长度
-        file_list = os.listdir(self.dir)
-        
-        # 使用列表推导式过滤出所有文件，而不包括子文件夹  
-        return len(file_list)
-    
+        return len(self.captions)
 
     def __getitem__(self, idx):
-        text=self.text_list[idx]
-        id=self.text_maps[text]
-        formatted_number = str(id).zfill(12)  # 填充到12位
-        filename = formatted_number + '.jpg'
-        target=self.img_maps[filename]
-       
+        text=self.captions[idx]
+        image=self.images_paths[idx]
+        target=self.image_item_list[image]
         return text,target
-        # 在这里可以进行数据转换操作，如果定义了 transform
+      
 
         
 
 # # # # 使用示例
-# csv_file_path = "/home/u2021010261/share/pc/COCO/captions_val2017.json"
-# data_dir="/home/u2021010261/share/pc/COCO/val2017"
-# device="cuda:0"
-# CoCo_dataset = CoCo_t2i_Dataset(json_file=csv_file_path,datadir=data_dir,device=device)
-# test_dl = DataLoader(dataset=CoCo_dataset, batch_size=64, shuffle=False, drop_last=False,
+# CoCo_dataset = CoCo_t2i_Dataset(split="val",images_dir='/home/share/pc/COCO/val2017',caption_path='/home/share/pc/COCO/captions_val2017.json')
+# test_dl = DataLoader(dataset=CoCo_dataset, batch_size=10, shuffle=False, drop_last=False,
 #         num_workers=4, pin_memory=True, persistent_workers=True)
 
 # with torch.no_grad():
 #         for batch_idx, (x, target) in enumerate(test_dl):
 #             print(x)
 #             print(target)
-#             x=x.to(device)
+#             #x=x.to(device)
 #             target = target.to(device)
+          

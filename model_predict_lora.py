@@ -4,6 +4,14 @@ import torch.nn.functional as F
 import numpy as np
 import csv
 import argparse
+
+import logging
+
+logging.basicConfig(level=logging.INFO,
+                    format='%(process)d - %(asctime)s - %(levelname)s - %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    force=True)
+
 class MyModel(nn.Module):
     def __init__(self, input_size, output_size):
         super(MyModel, self).__init__()
@@ -37,14 +45,14 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 import os
 layer_num = 32
 # root = "parameters/image/trunks+post"
-root=f"parameters/image/coco"
+root=f"parameters/image/coco/train_10"
 embeddings_dict = {}
 
 for i in range(1, layer_num + 1):
-    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_true.pth'),map_location=torch.device(device))['vision_embeddings']
+    embeddings_dict[str(i)] = torch.load(os.path.join(root, f'embeddings_{i}_lora.pth'),map_location=torch.device(device))['vision_embeddings']
     
-layers = np.loadtxt(f'./results/coco_lora/R{S}/layers.txt')  
-# print(layers)
+layers = np.loadtxt(f'./results/coco_lora_train_10/R{S}/layers.txt')  
+# logging.info(layers)
 layers = np.concatenate(tuple((layers) for i in range(layer_num)), axis=0)
 # 根据layers值获取对应的embeddings
 all_embeddings = []
@@ -61,6 +69,7 @@ source_indicator = np.array(source_indicator)
 
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test, source_train, source_test = train_test_split(embeddings,layers, source_indicator, test_size=0.2, random_state=42)
+print(y_train.min(), y_train.max())
 
 X_train=X_train.to(device)
 X_test=X_test.to(device)
@@ -71,7 +80,7 @@ y_train_tensor = torch.tensor(y_train).long()
 
 # 训练模型
 num_epochs = 100
-batch_size = 8
+batch_size = 4
 for epoch in range(num_epochs):
     for i in range(0, len(X_train_tensor), batch_size):
         inputs = X_train_tensor[i:i+batch_size]
@@ -90,7 +99,9 @@ for epoch in range(num_epochs):
         loss.backward()
         optimizer.step()
 
-    print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+        if i % 10000 == 0:
+            logging.info(f'Batch [{i / batch_size}/{len(X_train_tensor)/batch_size}] Loss: {loss.item():.4f}')
+    logging.info(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
 
 # 初始化测试数据和结果的字典
 X_test_dict = {}
@@ -115,14 +126,14 @@ with torch.no_grad():
     outputs = model(torch.tensor(X_test).to(device).float())
     _, predicted = torch.max(outputs, 1)
     total_accuracy = (predicted == torch.tensor(y_test).to(device)).sum().item() / len(y_test)
-    print(f'Total Accuracy: {total_accuracy:.2f}')
+    logging.info(f'Total Accuracy: {total_accuracy:.2f}')
     
     # 分层精度计算
     for layer_key in range(1, layer_num+1):
         outputs = model(torch.tensor(X_test_dict[layer_key]).to(device).float())
         _, predicted = torch.max(outputs, 1)
         accuracy_dict[layer_key] = (predicted == torch.tensor(y_test_dict[layer_key]).to(device)).sum().item() / len(y_test_dict[layer_key])
-        print(f'Accuracy for layer {layer_key}: {accuracy_dict[layer_key]:.2f}')
+        logging.info(f'Accuracy for layer {layer_key}: {accuracy_dict[layer_key]:.2f}')
 
     # 将结果写入CSV文件
     with open(f'model_coco_lora.csv', 'a', newline='') as csvfile:
@@ -134,5 +145,5 @@ with torch.no_grad():
        
     # 保存模型参数
     #model: N=32 lora S=10
-    torch.save(model.state_dict(), f'parameters/image/coco/model/image_S={S}_lora.pth')
+    torch.save(model.state_dict(), f'parameters/image/coco/model/image_S={S}_lora_train_10_bs1.pth')
    
