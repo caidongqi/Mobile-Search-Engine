@@ -35,7 +35,7 @@ def run_command(cmd_queue):
         cmd_queue.task_done()
 
 # Read commands from the file
-with open('commands_true_min.txt', 'r') as f:
+with open('commands_flicker.txt', 'r') as f:
     commands = json.load(f)
 
 # Create a queue and add commands to it

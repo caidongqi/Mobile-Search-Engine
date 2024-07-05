@@ -25,12 +25,12 @@ class MyModel(nn.Module):
 device =torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--S", default=10,type=int, help="Number of S")
-parser.add_argument("--version", default='train_model_flicker',type=str, help="The tags you want to describe the experiment")
-parser.add_argument("--root", default='parameters/image/flickr8k/val',type=str, help="The embeddings path")
+parser.add_argument("--version", default='twitter',type=str, help="The tags you want to describe the experiment")
+parser.add_argument("--root", default='parameters/image/twitter',type=str, help="The embeddings path")
 parser.add_argument("--embeddings_file", default='embeddings_{i}.pth',type=str, help="The embeddings file")
-parser.add_argument("--layers_file", default='./results/flickr8k_lora_val_nohead/R{S}/layers.txt',type=str, help="The layers file")
-parser.add_argument("--outputs_path", default='parameters/image/flickr8k/val/model/image_S={S}_val_v2.pth',type=str, help="The output path")
-parser.add_argument("--csv_path", default='model_flicker_val.csv',type=str, help="The output path")
+#parser.add_argument("--layers_file", default='./results/flickr8k_lora_val_nohead/R{S}/layers.txt',type=str, help="The layers file")
+#parser.add_argument("--outputs_path", default='parameters/image/flickr8k/val/model/image_S={S}_val_v2.pth',type=str, help="The output path")
+# parser.add_argument("--csv_path", default='model_flicker_val.csv',type=str, help="The output path")
 
 
 # 解析命令行参数
@@ -40,9 +40,9 @@ S=args.S
 version=args.version
 root=args.root
 embeddings_file=args.embeddings_file
-layers_file=args.layers_file
-csv_path=args.csv_path
-outputs_path=args.outputs_path
+layers_file=f'./results/{version}/R{S}/layers.txt'
+csv_path=f'model_{version}.csv'
+outputs_path=f'parameters/image/{version}/model'
 import time
 # 获取当前时间的时间戳
 timestamp = time.time()
@@ -173,6 +173,8 @@ with torch.no_grad():
    
     # 保存模型参数
     #model: N=32 lora S=10
-    outputs_path=outputs_path.format(S=S)
-    torch.save(model.state_dict(), outputs_path)
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
+    outputs_path_model=f'{outputs_path}/S={S}.pth'
+    torch.save(model.state_dict(), outputs_path_model)
    

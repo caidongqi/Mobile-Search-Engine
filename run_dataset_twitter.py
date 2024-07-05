@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO,
                     handlers=[logging.FileHandler(f'logs/run/get_embeddings{formatted_time}.log')], 
                     force=True)
 
-steps=[1,0,0,0]
+steps=[0,0,0,0,1]
 worker_num = 6
 # Loop over lora_layers from 0 to 31
 # parser.add_argument("--device", type=str, default="cuda:0", help="Device to use (cuda:2 or cpu)")
@@ -44,11 +44,11 @@ if steps[0]==1:
 
 if steps[1]==1:
     worker_num = 6
-    for i in range(1,13):
+    for i in range(1,33):
         if i%(worker_num-1)==0 and i!=0:
-            command = f"python test_clotho_val.py --audio_num_blocks {i} --version {version} --lora_dir {lora_dir} --embeddings_path {embeddings_path}> logs/infer/infer-{i}.log 2>&1" # stop to run this command
+            command = f"python test_twitter.py --vision_num_blocks {i} --version {version} --lora_dir {lora_dir} --embeddings_path {embeddings_path}> logs/infer/infer-{i}.log 2>&1" # stop to run this command
         else:
-            command = f"python test_clotho_val.py --audio_num_blocks {i} --version {version} --lora_dir {lora_dir} --embeddings_path {embeddings_path}> logs/infer/infer-{i}.log 2>&1 &" # put it in the backend and run the next one concurrently
+            command = f"python test_twitter.py --vision_num_blocks {i} --version {version} --lora_dir {lora_dir} --embeddings_path {embeddings_path}> logs/infer/infer-{i}.log 2>&1 &" # put it in the backend and run the next one concurrently
         logging.info(f"Running command: {command}")
         os.system(command)
 
@@ -57,31 +57,41 @@ if steps[2]==1:
     worker_num = 12
     for i in topk_list:
         if i%(worker_num-1)==0 and i!=0:
-            command = f"python get_layers_clotho.py --S {i} --version {version}" # stop to run this command
+            command = f"python get_layers_twitter.py --S {i} --version {version}" # stop to run this command
         else:
-            command = f"python get_layers_clotho.py --S {i} --version {version}" # put it in the backend and run the next one concurrently
+            command = f"python get_layers_twitter.py --S {i} --version {version}" # put it in the backend and run the next one concurrently
         logging.info(f"Running command: {command}")
         os.system(command)
 
 if steps[3]==1:
-    Ns = [7,8]
-    Qs = [20,30]
-    Ss = [200,300,400,500]
+    topk_list = [1,5, 10, 20, 30, 40]
+    worker_num = 6
+    for index, i in enumerate(topk_list):
+        if index%(worker_num-1)==0 and index!=0:
+            command = f"python model_predict_lora_val.py --S {i} --version {version} --root {embeddings_path}> logs/coco-val/predict_model-{i}.log 2>&1"
+        else:
+            command = f"python model_predict_lora_val.py --S {i} --version {version} --root {embeddings_path}> logs/coco-val/predict_model-{i}.log 2>&1 &"
+        logging.info(f"Running command: {command}")
+        os.system(command)
 
+
+if steps[4]==1:
+    Ns = [8]
+    Qs = [1, 2, 5, 10, 20, 30, 40, 50, 60,70,80,90,100]
+    Ss = [1,10,40]
     # Create a list of all combinations of Ns, Qs, and Ss
-    #combinations = [(N, S, Q) for Q in Qs for N, S in itertools.product(Ns, Ss)]
-
-    combinations = [( S, Q) for Q in Qs for  S in  Ss]
+    combinations = [(N, Q, S) for S in Ss for N, Q in itertools.product(Ns, Qs)]
 
     # Number of GPUs
     num_gpus = 1
 
     # Generate the commands in a round-robin fashion across the GPUs
     commands = []
-    # for i, (N, S, Q) in enumerate(combinations):
-    for i, ( S, Q) in enumerate(combinations):
+    for i, (N, Q, S) in enumerate(combinations):
         device = f"cuda:{i % num_gpus}"
-        command = f"python e2e_clotho_val_ground_truth.py --S {S} --Q {Q} --version {version} --parameter_embedding_folder {embeddings_path}"
+        #version='val_model_v1' #with new lora predict models 
+        #log_file = f'logs/ground_truth_val/e2e-val-S={S}_N={N}_Q={Q}_{version}.log'
+        command = f"python e2e_twitter.py --N {N}  --Q {Q} --S {S}"
         commands.append(command)
 
     # Output the commands as a list of strings
@@ -92,7 +102,7 @@ if steps[3]==1:
     with open('commands.txt', 'w') as f:
         json.dump(commands, f)
         
-    print("Commands have been saved to 'commands_true.txt'")
+    print("Commands have been saved to 'commands.txt'")
 
     num_workers = 6 # 一个gpu满载差不多跑6-7个worker，根据实际情况调整一下，不然会OOM
 

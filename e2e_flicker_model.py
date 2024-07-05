@@ -30,7 +30,7 @@ parser.add_argument("--Q", default=20,type=int, help="Fine grained embedding sco
 parser.add_argument("--S", default=10,type=int, help="Grain for predict model, larger S, smaller average predicted layer")
 parser.add_argument("--split", default='val',type=str, help="train or val")
 parser.add_argument("--device", default='cuda:0',type=str, help="gpu device id (if applicable)")
-parser.add_argument("--version", default='e2e_predict_model_flicker',type=str, help="gpu device id (if applicable)")
+parser.add_argument("--version", default='flicker_figure',type=str, help="gpu device id (if applicable)")
 
 args = parser.parse_args()
 N=args.N
@@ -222,7 +222,7 @@ fine_model=fine_model.to(device)
 fine_model.eval()
 
 
-K_list=[1, 2, 5, 10, 20, 30, 40, 50, 60,70,80,90,100,110,120,130,300,400,500,600] # top k list
+K_list= [1,2,4,8,10,16,32,48]
 K_caption_correct_list = {} #  correct/not list for all test images with different K, e.g., {"K=1": [1,1,0,0...], 'K=5":[...], ...}
 shortlist={} # store concrete path, text label
 shortlist_item={} # the index of label

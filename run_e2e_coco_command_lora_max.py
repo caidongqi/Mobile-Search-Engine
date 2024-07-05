@@ -3,7 +3,7 @@ import json
 
 # Define parameters
 Ns = [7,8]
-Qs = [5, 10, 20]
+Qs = [1,2,4,8,10,16,32,48]
 Ss = [10]
 
 # Create a list of all combinations of Ns, Qs, and Ss
@@ -26,7 +26,7 @@ for command in commands:
     print(command)
 
 # Save commands to a file
-with open('commands_true_max.txt', 'w') as f:
+with open('commands_max.txt', 'w') as f:
     json.dump(commands, f)
     
 print("Commands have been saved to 'commands_true.txt'")

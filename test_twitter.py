@@ -25,12 +25,10 @@ import pickle
 
 # # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-parser.add_argument("--vision_num_blocks", type=int,default=32, help="Number of vision blocks")
+parser.add_argument("--vision_num_blocks", type=int,default=1, help="Number of vision blocks")
 parser.add_argument("--version", type=str, default='twitter', help="version of test lora")
 parser.add_argument("--lora_dir", type=str, default='/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/flickr8k/with_head/trunk/e50/{vision_num_blocks}', help="lora dir")
-parser.add_argument("--embedding_path", type=str, default='parameters/image/twitter/embeddings_{v_block}.pth', help="embeddings dir")
-parser.add_argument("--result_path", type=str, default='./results/twitter/R{k}', help="infer results dir")
-parser.add_argument("--csv_file_path", type=str, default='test_twitter.csv', help="infer output csv path")
+parser.add_argument("--embeddings_path", type=str, default='parameters/image/twitter', help="embeddings dir")
 
 
 args = parser.parse_args()
@@ -38,10 +36,9 @@ vision_num_blocks=args.vision_num_blocks
 version=args.version
 lora_dir=args.lora_dir
 lora_dir=lora_dir.format(vision_num_blocks=vision_num_blocks)
-embedding_path= args.embedding_path
-result_path = args.result_path
-
-csv_file_path = args.csv_file_path
+embeddings_path= args.embeddings_path
+csv_file_path = f'infer_{version}.csv'
+result_path=f'results/{version}'
 
 import time
 # 获取当前时间的时间戳
@@ -67,7 +64,8 @@ t_block=len(model.modality_trunks["text"].blocks)
 a_block=len(model.modality_trunks["audio"].blocks)
 i_block=len(model.modality_trunks["imu"].blocks)
 
-embedding_path=embedding_path.format(v_block=v_block)
+embeddings_path=f'{embeddings_path}/embeddings_{vision_num_blocks}.pth'
+
 # Load fine-tuned text heads
 # load_module(model.modality_heads, module_name="heads",
 #             checkpoint_dir=lora_dir, device =device)
@@ -119,7 +117,7 @@ def run_inference():
     for k in topk1:
         counts_rs[f'counts_r{k}'] = np.array([])
     with torch.no_grad():
-        checkpoint = torch.load(embedding_path, map_location=device)
+        checkpoint = torch.load(embeddings_path, map_location=device)
         vision_embeddings= checkpoint['vision_embeddings'] # TODO: audio_embeddings -> xx_embedding
         for batch_idx, (_, x, image_name) in enumerate(test_dl):
             target = torch.tensor([img_dict[name] for name in image_name]).to(device)
@@ -147,7 +145,7 @@ def run_inference():
 
             logging.info(f"batch_idx = {batch_idx}, r1={r1},r5={r5},r10={r10}, test_total = {data_length}")
         for k in topk1:
-            path=result_path.format(k=k)
+            path=f'{result_path}/R{k}'
             if not os.path.exists(path):
                 os.makedirs(path, exist_ok=True)
             file_path=os.path.join(path,f'v{v_block}_t{t_block}.txt')
