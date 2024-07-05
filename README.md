@@ -93,11 +93,13 @@ assuming the `--lora_checkpoint_dir` remains the same.
 
 
 ## End-to-end experiments instruction:
+
+## E2E (end to end)
 To construct an e2e system, you have 4 steps to go. In `run_dataset.py`, you can see the whole pipeline of clotho dataset,  the same pattern applies when using other datasets.
 
 ### Step 1: Get every embedding of the data with different model layers.
 #### In our technique, we need to embed every data dynamically, so we need to prepare the embeddings of different model layers.
-In `get_embedding_cltho.py`, we can compute the embeddings of clotho dataset at a specific audio layer, so at step 1 in `run_dataset.py`, you need to iterate all the audio layers(form 1 to the whole audio layer of Imagebind).
+In `get_embedding_cltho.py`, we can compute the embeddings of clotho dataset at a specific audio layer, so at step 1 in `run_dataset.py`, you need to iterate all the audio layers (form 1 to the whole audio layer of Imagebind).
 
 Parameters of `get_embedding_cltho.py`:
 Input: 
@@ -106,21 +108,70 @@ Input:
 --embedding_dir 'the path to save the embeddings'
 --dataset 'the name to the dataset'
 
+Output:
+
+Relevant dataset embedings saved in `embedding_dir`.
+
 ### Step 2: Inference the dataset at different model layers to get the data prediction results.
 #### In this step, our goal is to get the prediction result of every single data in dataset, for example, at audio layer=7, the output result for a silgle data's R@N is 0, while at layer=9, it might be 1.
-In `test_clotho_val.py`, we compute all the predictions of a dataset at a certain model layer, the results are 0/1, '0' means false while '1' means correct. At step 2, we iterate all the layers from 1-full, then we get the whole results of every data at different layers.
+In `test_clotho_val.py`, we compute all the predictions of a dataset at a certain model layer, the results are 0/1, '0' means false while '1' means correct. At step 2, we iterate all the layers from 1-full layers, then we get the whole results of every data at different layers.
 
 Parameters of `test_clotho_val.py`:
 Input: 
---audio_num_blocks 'defines the layer of the model'
---lora dir 'the path of lora parameters'
---embedding_path 'the path to save the embeddings'
---version 'the tag of the experiment, often contains the name of the dataset and the method of the experiment (lora or not, with lora head or not)'
+--audio_num_blocks   'defines the layer of the model'
+--lora dir   'the path of lora parameters'
+--embedding_path  'the path to save the embeddings'
+--version  'the tag of the experiment, often contains the name of the dataset and the method of the experiment (for example, lora or not, with lora head or not), it is used for recogizing the files'
 
 Output:
-txt files, often at 'results/clotho_head/R{N}'
+every data predictions results saved in txt files, often at 'results/clotho_head/R{N}'
 
 ### Step3: Get the min layer of every data
-Use the the txt files to get the min layer that the result is 1.
+Use the the txt files to get the min layer that the result is 1. In step 2, we only get the results of every model layer for each data, but the utimate goal is to get the least layer every data needs to be retrieved, therefore, we need to find out the first layer that the result is '1', and the python file`get_layers_clotho.py` can do this job.
+
+Parameters of `get_layers_clotho.py`:
+
+Input :
+
+Txt files got in step 2.
+
+Output:
+
+the least layers every data needs saved in txt files, often at 'results/clotho_head/R{N}/layers.txt' 
+
+
+
+### Step4: Use the labels got at step3 to train the predictor model
+
+We feed the model with the embeddings of the dataset at a certain model layer N , and the least layer every data needs (the labels), to make the model predicts how many layers for a certain data needs.
+
+Parameters of `model_predict_lora.py`:
+
+Input:
+
+Labels for each data, often at 'results/clotho_head/R{N}/layers.txt' 
+
+Output:
+
+model checkpoints
+
+### Step5: Use the model got in Step4 to dynamically embed th dataset and get the prediction results to choose top `Q` results for fine-grained search.
+
+Input:
+
+N: how many layers you want to feed the models, usually, the bigger N ,the better accuracy, but also the longer calculation time 
+
+S: it is the same `S` in R@S labels you feed to the model, the bigger S, the less layers model predicts , but the higher accuracy for predictor models 
+
+Q: the top Q results got in dynamic search, the bigger Q, the more results we need to save ,but more accurate
+
+Output:
+
+the dynamic search accuracy\the e2e search accuracy
+
+
+
+
+
 
 ### Step4: Use the labels got in Step3 to dynamically embed th dataset and get the prediction results.
