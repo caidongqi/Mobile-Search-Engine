@@ -17,6 +17,7 @@ pip install --upgrade fastapi
 ## Search
 
 In `search.py`, you can find an example of how to use the model for search images of target label. To try the `LoRA` fine-tuned model, change `lora=True`, set the fine-tuned model's path `lora_dir` and the parameters in `LoRA.apply_lora_modality_trunks()` within the script. To try the original ImageBind model, set `lora=False`.
+And you can set the trunk blocks of each modlity when use imagebind_model.imagebind_huge().
 
 **example explanation**: The `Imagenet` dataset contains 1000 classes, search the corresponding images for the three words(`stingray`,`cock`,`hen`) and obtain the precision and recall of the images we searched for.
 
@@ -90,12 +91,8 @@ replacing `--lora` with `--linear_probing` (Both cannot be set in the same run).
 On running `--lora` in the next training session/s, the checkpoint of the heads is automatically loaded and saved,
 assuming the `--lora_checkpoint_dir` remains the same.
 
-## Inference
 
-In `test_imagent.py`, you can find an example of how to use the model for inference on ImageNet Dataset. To try the `LoRA` fine-tuned model, change `lora=True`, set the fine-tuned model's path `lora_dir` and the parameters in `LoRA.apply_lora_modality_trunks()` within the script. To try the original ImageBind model, set `lora=False`. And you can set the trunk blocks of each modlity when use `imagebind_model.imagebind_huge()`.
-
-
-## E2E 
+## End-to-end experiments instruction:
 To construct an e2e system, you have 4 steps to go. In `run_dataset.py`, you can see the whole pipeline of clotho dataset,  the same pattern applies when using other datasets.
 
 ### Step 1: Get every embedding of the data with different model layers.
