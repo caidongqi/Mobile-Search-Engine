@@ -21,7 +21,7 @@ parser.add_argument("--Q", default=30,type=int, help="Fine grained embedding sco
 parser.add_argument("--S", default=10,type=int, help="Grain for predict model, larger S, smaller average predicted layer")
 parser.add_argument("--split", default='val',type=str, help="train or val")
 parser.add_argument("--device", default='cuda:0',type=str, help="gpu device id (if applicable)")
-parser.add_argument("--version", default='test_coco_max_nolora_v2',type=str, help="gpu device id (if applicable)")
+parser.add_argument("--version", default='test_coco_max_nolora_v6',type=str, help="gpu device id (if applicable)")
 
 import time
 
@@ -58,7 +58,7 @@ lora_dir = ""
 model_parameter=f'parameters/image/coco/model/image_S={S}_val_v1.pth'
 coarse_embedding_path = f'{parameter_embedding_folder}/embeddings_{N}_trunk_lora.pth' # TODO: currently, those embeddings are computed by models without lora tuning
 fine_model_embeddings = f'{parameter_embedding_folder}/embeddings_{full_layer}_trunk_lora.pth'
-text_embeddings_dir = f'{parameter_embedding_folder}/text_embeddings_trunk_lora_N={N}_S={S}_{version}.pt'
+text_embeddings_dir = f'{parameter_embedding_folder}/text_embeddings_{version}.pt'
 
 # 下面的三个名字，跑的时候尽量改一下
 # dynamic embeddings
@@ -201,6 +201,10 @@ K_list=[1, 5, 10, 20,30] # top k list
 K_caption_correct_list = {} #  correct/not list for all test images with different K, e.g., {"K=1": [1,1,0,0...], 'K=5":[...], ...}
 shortlist={} # store concrete path, text label
 shortlist_item={} # the index of label
+model_1 = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=32)
+model_1=model_1.cuda()
+model_1 = model_1.to(device) 
+model_1.eval()
 
 for k in K_list:
     K_caption_correct_list[f'K={k}'] = np.array([])
@@ -213,16 +217,22 @@ if not os.path.exists(text_embeddings_dir):
     all_text_embeddings = []
     text_embeddings={}
     with torch.no_grad():
-        # dynamic embedding classification
-        for batch_idx, (x, target) in enumerate(test_dl1):
-            current_text_embedding_dynamic_path=f'{parameter_embedding_folder}/text_embeddings_{int(layers[target]+1)}_trunk_lora.pth'
-            if os.path.exists(current_text_embedding_dynamic_path):
-                current_embeddings = torch.load(current_text_embedding_dynamic_path, map_location=torch.device(args.device))['text_embeddings'][batch_idx]
-                if text_embeddings:
-                    text_embeddings[ModalityType.TEXT] = torch.cat([text_embeddings[ModalityType.TEXT], current_embeddings.unsqueeze(0).to(text_embeddings[ModalityType.TEXT].device)], dim=0)
-                else:
-                    text_embeddings[ModalityType.TEXT] = current_embeddings.unsqueeze(0)
-                del current_embeddings
+        for batch_idx, (x, target) in enumerate(test_dl):
+            # dynamic embedding classification
+            inputs = {
+                        ModalityType.TEXT: data.load_and_transform_text(x, device)
+                        
+                    }
+            # embeddings = model_1(inputs)
+            current_embeddings = model_1(inputs)[ModalityType.TEXT]
+            
+            if text_embeddings:
+                text_embeddings[ModalityType.TEXT] = torch.cat([text_embeddings[ModalityType.TEXT], current_embeddings], dim=0)
+            else:
+                text_embeddings[ModalityType.TEXT] = current_embeddings
+
+            # 释放之前的中间结果
+            del current_embeddings
                         
         torch.save({
                 'text_embeddings': text_embeddings[ModalityType.TEXT]

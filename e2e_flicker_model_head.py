@@ -26,11 +26,11 @@ formatted_time = time.strftime('%Y-%m-%d %H:%M:%S', local_time)
 # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--N", type=int, default=8, help="First get N embeddings")
-parser.add_argument("--Q", default=20,type=int, help="Fine grained embedding scope after query")
+parser.add_argument("--Q", default=2,type=int, help="Fine grained embedding scope after query")
 parser.add_argument("--S", default=10,type=int, help="Grain for predict model, larger S, smaller average predicted layer")
 parser.add_argument("--split", default='val',type=str, help="train or val")
 parser.add_argument("--device", default='cuda:0',type=str, help="gpu device id (if applicable)")
-parser.add_argument("--version", default='e2e_predict_model_flicker_head',type=str, help="gpu device id (if applicable)")
+parser.add_argument("--version", default='figure_of_flickr_v1',type=str, help="gpu device id (if applicable)")
 
 args = parser.parse_args()
 N=args.N
@@ -61,7 +61,7 @@ lora_dir=f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora
 model_parameter=f'parameters/image/flickr8k/val/model/image_S={S}_val_v2.pth'
 coarse_embedding_path = f'{parameter_embedding_folder}/embeddings_{N}.pth' # TODO: currently, those embeddings are computed by models without lora tuning
 fine_model_embeddings = f'{parameter_embedding_folder}/embeddings_{full_layer}.pth'
-text_embeddings_dir = f'{parameter_embedding_folder}/text_embeddings_{version}.pt'
+text_embeddings_dir = f'{parameter_embedding_folder}/text_embeddings_{N}_{S}_{version}.pt'
 
 # 下面的三个名字，跑的时候尽量改一下
 # dynamic embeddings
@@ -222,7 +222,7 @@ fine_model=fine_model.to(device)
 fine_model.eval()
 
 
-K_list=[1, 2, 5, 10, 20, 30, 40, 50, 60,70,80,90,100,110,120,130,300,400,500,600] # top k list
+K_list=[1, 2, 4,5, 8,10,16, 20, 30, 32,40,48, 50, 60,70,80,90,100,110,120,130,300,400,500,600] # top k list
 K_caption_correct_list = {} #  correct/not list for all test images with different K, e.g., {"K=1": [1,1,0,0...], 'K=5":[...], ...}
 shortlist={} # store concrete path, text label
 shortlist_item={} # the index of label

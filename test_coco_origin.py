@@ -24,17 +24,19 @@ import argparse
 # # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--vision_num_blocks", type=int,default=6, help="Number of vision blocks")
+parser.add_argument("--text_num_blocks", type=int,default=1, help="Number of text blocks")
 
 args = parser.parse_args()
 
 
 vision_num_blocks=args.vision_num_blocks
+text_num_blocks=args.text_num_blocks
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
+model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks, text_num_blocks=text_num_blocks)
 v_block=len(model.modality_trunks["vision"].blocks)
 t_block=len(model.modality_trunks["text"].blocks)
 a_block=len(model.modality_trunks["audio"].blocks)
@@ -53,7 +55,7 @@ model.eval()
 
 coco_annotation_file = "/home/u2021010261/share/pc/COCO/captions_val2017.json"
 data_dir="/home/u2021010261/share/pc/COCO/val2017"
-CoCo_dataset = CoCo_t2i_Dataset(json_file=coco_annotation_file,datadir=data_dir,device=device)
+CoCo_dataset = CoCo_t2i_Dataset(caption_path=coco_annotation_file,images_dir=data_dir,split="val")
 test_dl = DataLoader(dataset=CoCo_dataset, batch_size=64, shuffle=False, drop_last=False,
         num_workers=4, pin_memory=True, persistent_workers=True)
 
@@ -96,6 +98,9 @@ def run_inference():
             r10=(np.sum(counts_rs['counts_r10']))/data_length
           
             logging.info(f"batch_idx = {batch_idx}, r1={r1},r5={r5},r10={r10}, test_total = {data_length}")
+
+            if batch_idx > 50:
+                break
         all_predictions = torch.cat(all_predictions)
         torch.save(all_predictions, f'parameters/imagebind_targets/imagebind_{vision_num_blocks}.pt')
         for k in topk1:
@@ -106,17 +111,16 @@ def run_inference():
             np.savetxt(file_path,counts_rs[f'counts_r{k}'],fmt='%d')
         
     results=['vison_layer','R1','R5','R10']
-    co_results=[v_block, r1, r5, r10]
+    co_results=[v_block, t_block, r1, r5, r10]
     data1 = [results, co_results]
 
     # # 指定CSV文件路径
-    csv_file_path = f'test_coco_zeroshot_origin.csv'
+    csv_file_path = f'test_coco_zeroshot_origin_unbalanced.csv'
 
     with open(csv_file_path, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
         # 写入新数据
-        for row in data1:
-            writer.writerow(row)
+        writer.writerow(co_results)
     return r1,r5,r10
 
 def main():

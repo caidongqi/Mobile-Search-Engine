@@ -3,22 +3,22 @@ import json
 
 # Define parameters
 Ns = [7,8]
-Qs = [1,2,4,8,10,16,32,48]
-Ss = [1,10]
+Qs = [16,32,48]
+Ss = [1,10,30]
 
 # Create a list of all combinations of Ns, Qs, and Ss
-combinations = [(N, Q, S) for S in Ss for N, Q in itertools.product(Ns, Qs)]
+combinations = [(Q, N, S) for Q in Qs for N, S in itertools.product(Ns, Ss)]
 
 # Number of GPUs
 num_gpus = 1
 
 # Generate the commands in a round-robin fashion across the GPUs
 commands = []
-for i, (N, Q, S) in enumerate(combinations):
+for i, (Q, N, S) in enumerate(combinations):
     device = f"cuda:{i % num_gpus}"
     #version='val_model_v1' #with new lora predict models 
     #log_file = f'logs/ground_truth_val/e2e-val-S={S}_N={N}_Q={Q}_{version}.log'
-    command = f"python e2e_flicker_model.py --N {N}  --Q {Q} --S {S}"
+    command = f"python e2e_flicker_model_head.py  --Q {Q} --N {N}  --S {S}"
     commands.append(command)
 
 # Output the commands as a list of strings

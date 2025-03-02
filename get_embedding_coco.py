@@ -16,22 +16,20 @@ from torch.utils.data import DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
 from torch.nn.parallel import DataParallel
-from api.coco_text2image import CoCo_t2i_Dataset
-from api.coco import CoCoDataset
+from api.clotho_text2audio import ClothoTextDataset
+from api.clotho import ClothoDataset
+from api.coco_get_image import CoCoDataset
 logging.basicConfig(level=logging.INFO, force=True)
 import os
 import itertools
 from api.imagenet import ImageNetDataset
+imagenet_datadir = "/home/u2021010261/pc/imagenet/imagenet"
+
 import argparse
 # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-
-# 添加命令行参数
-#parser.add_argument("audio_num_blocks", type=int, help="Number of audio blocks")
-
-# parser.add_argument("--audio_num_blocks", default=12, type=int, help="Number of audio blocks")
 parser.add_argument("--device", type=str, default="cuda:0", help="Device to use (cuda:2 or cpu)")
-parser.add_argument("--lora_layers", default=0,type=int, help="Number of audio blocks")
+parser.add_argument("--lora_layers", default=31,type=int, help="Number of audio blocks")
 
 # 解析命令行参数
 args = parser.parse_args()
@@ -39,14 +37,18 @@ args = parser.parse_args()
 lora_layers=args.lora_layers
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
-lora=True
+lora=False
 linear_probing=False
 load_head_post_proc_finetuned=True
 lora_dir=f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/coco/trunk/ratio3/e12/{lora_layers+1}'
+#lora_dir =f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/coco/progressive/e20/32'
+#lora_dir =f'/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/imagenet/step1/{vision_num_blocks}'
+
+#device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 model_1 = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=lora_layers+1)
 #model_2 = imagebind_model.imagebind_huge(pretrained=True,audio_num_blocks=audio_num_blocks_2)
-v_block=len(model_1.modality_trunks["vision"].blocks)
+v_block=len(model_1.modality_trunks["vision"].blocks)   
 t_block=len(model_1.modality_trunks["text"].blocks)
 a_block=len(model_1.modality_trunks["audio"].blocks)
 i_block=len(model_1.modality_trunks["imu"].blocks)
@@ -94,30 +96,40 @@ with torch.no_grad():
         ]
     )
    
-    CoCo_dataset = CoCo_t2i_Dataset(split="val",images_dir='/home/share/pc/COCO/val2017',caption_path='/home/share/pc/COCO/captions_val2017.json')
-    test_dl = DataLoader(dataset=CoCo_dataset, batch_size=64, shuffle=False, drop_last=False,
-        num_workers=4, pin_memory=True, persistent_workers=True)
-
+    coco_datadir="/home/u2021010261/share/pc/COCO/train2017"
+    coco_annotation_file='/home/u2021010261/share/pc/COCO/instances_train2017.json'
+    test_ds=CoCoDataset(datadir=coco_datadir, annFile=coco_annotation_file,transform=data_transform)
+    test_dl=DataLoader(dataset=test_ds, batch_size=64, shuffle=False, drop_last=False, num_workers=4, pin_memory=True, persistent_workers=True)
+    print(len(test_dl))
     
-    for batch_idx, (x, target) in enumerate(test_dl):
+    for batch_idx, x in enumerate(test_dl):
+            
+            #model_device = next(model_1.module.parameters()).device        
+            x = x.to(device)
+     
             inputs = {
-                    ModalityType.TEXT: data.load_and_transform_text(x, device)
-                    
-                }
+                ModalityType.VISION: x,
+                           }
            # embeddings = model_1(inputs)
-            current_embeddings = model_1(inputs)[ModalityType.TEXT]
+            current_embeddings = model_1(inputs)[ModalityType.VISION]
             
             if embeddings:
-                embeddings[ModalityType.TEXT] = torch.cat([embeddings[ModalityType.TEXT], current_embeddings], dim=0)
+                embeddings[ModalityType.VISION] = torch.cat([embeddings[ModalityType.VISION], current_embeddings], dim=0)
             else:
-                embeddings[ModalityType.TEXT] = current_embeddings
+                embeddings[ModalityType.VISION] = current_embeddings
     
             # 释放之前的中间结果
             del current_embeddings
             
-    embeddings[ModalityType.TEXT] = embeddings[ModalityType.TEXT].to(device)
+            #embeddings_list.append(model_1(inputs)[ModalityType.VISION])
+            #embeddings[ModalityType.VISION]=torch.cat((embeddings[ModalityType.VISION],model_1(inputs)[ModalityType.VISION]),dim=1)
+    # 假设你想要保存模型参数和张量
+    # 使用 torch.cat() 将列表中的张量连接起来
+    embeddings[ModalityType.VISION] = embeddings[ModalityType.VISION].to(device)
+    #embeddings[ModalityType.VISION] = torch.cat(embeddings_list, dim=1)
     torch.save({
-        'text_embeddings': embeddings[ModalityType.TEXT]
-    }, f'parameters/image/coco/val/text_embeddings_{v_block}_trunk_lora.pth')
+        'vision_embeddings': embeddings[ModalityType.VISION]
+    }, f'parameters/image/coco/train/embeddings_{v_block}_lora.pth')
+    logging.info("Command completed successfully.")
 
     

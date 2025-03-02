@@ -26,15 +26,17 @@ import pickle
 # # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--vision_num_blocks", type=int,default=32, help="Number of vision blocks")
+parser.add_argument("--text_num_blocks", type=int,default=32, help="Number of text blocks")
 parser.add_argument("--version", type=str, default='flickr8k_head', help="version of test lora")
 parser.add_argument("--lora_dir", type=str, default='/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/flickr8k/with_head/trunk/e50/{vision_num_blocks}', help="lora dir")
 parser.add_argument("--embedding_path", type=str, default='parameters/image/flickr8k/val/withhead/embeddings_{v_block}.pth', help="embeddings dir")
 parser.add_argument("--result_path", type=str, default='./results/flickr8k_lora_val_head/R{k}', help="infer results dir")
-parser.add_argument("--csv_file_path", type=str, default='test_flickr8k_lora_valset_head.csv', help="infer output csv path")
+parser.add_argument("--csv_file_path", type=str, default='test_flickr8k_lora_valset_head_unbalanced.csv', help="infer output csv path")
 
 
 args = parser.parse_args()
 vision_num_blocks=args.vision_num_blocks
+text_num_blocks=args.text_num_blocks
 version=args.version
 lora_dir=args.lora_dir
 lora_dir=lora_dir.format(vision_num_blocks=vision_num_blocks)
@@ -56,35 +58,38 @@ logging.basicConfig(level=logging.INFO,
                     datefmt='%Y-%m-%d %H:%M:%S',
                     handlers=[logging.FileHandler(f'logs/infer/flickr8k{vision_num_blocks}_{version}_{formatted_time}.log')], 
                     force=True)
-device = "cuda:1" if torch.cuda.is_available() else "cpu"
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
 load_head_post_proc_finetuned=True
 
 #device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
-v_block=len(model.modality_trunks["vision"].blocks)
-t_block=len(model.modality_trunks["text"].blocks)
-a_block=len(model.modality_trunks["audio"].blocks)
-i_block=len(model.modality_trunks["imu"].blocks)
+# model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks)
+v_block=vision_num_blocks
+t_block=text_num_blocks
+# a_block=len(model.modality_trunks["audio"].blocks)
+# i_block=len(model.modality_trunks["imu"].blocks)
+batch_size = 64
 
 embedding_path=embedding_path.format(v_block=v_block)
 # Load fine-tuned text heads
-load_module(model.modality_heads, module_name="heads",
-            checkpoint_dir=lora_dir, device =device)
+# load_module(model.modality_heads, module_name="heads",
+#             checkpoint_dir=lora_dir, device =device)
 
-model.to(device)
-model.eval()
+# model.to(device)
+# model.eval()
 
 datadir = "/home/u2021010261/data/yx/Mobile-Search-Engine-main/.datasets/flickr8k/images"
 anne_dir = "/home/u2021010261/data/yx/Mobile-Search-Engine-main/.datasets/flickr8k/captions.txt"
 test_ds = flickr8k(root_dir=datadir, anne_dir=anne_dir, split='test')
-test_dl = DataLoader(dataset=test_ds, batch_size=1, shuffle=False, drop_last=False,
+test_dl = DataLoader(dataset=test_ds, batch_size=batch_size, shuffle=False, drop_last=False,
 num_workers=4, pin_memory=True, persistent_workers=True)
 
 text_prompt = 'a photo of {}.'
 # 从文件加载字典
 with open('/home/u2021010261/data/yx/Mobile-Search-Engine-main/flickr8k_img_dict.pkl', 'rb') as file:
     img_dict = pickle.load(file)
+
+all_text_embeddings = torch.load(f"parameters/image/flickr8k/unbalanced/text_embeddings_{text_num_blocks}.pth", map_location=device)["text_embeddings"]
 
 import pandas as pd
 def run_inference():    
@@ -101,8 +106,12 @@ def run_inference():
             inputs = {
                 ModalityType.TEXT: data.load_and_transform_text(text_x, device)   
             }
-            embeddings = model(inputs)
-            match_value_1 = embeddings[ModalityType.TEXT].to(vision_embeddings.device)@vision_embeddings.T 
+            if batch_idx==len(test_dl)-1:
+                text_embeddings = all_text_embeddings[batch_idx*batch_size:]
+            else:
+                text_embeddings = all_text_embeddings[batch_idx*batch_size:(batch_idx+1)*batch_size]
+    
+            match_value_1 = text_embeddings.to(vision_embeddings.device)@vision_embeddings.T 
             result_1 = torch.softmax(match_value_1, dim=-1)
             _, predicted = torch.max(result_1, -1)
             top_indices_list = [torch.topk(result_1, k=k, dim=-1)[1] for k in topk1]
@@ -128,7 +137,7 @@ def run_inference():
             np.savetxt(file_path,counts_rs[f'counts_r{k}'],fmt='%d')
         
     results=['vison_layer','R1','R5','R10']
-    co_results=[v_block, r1, r5, r10]
+    co_results=[v_block, t_block, r1, r5, r10]
     data1 = [results, co_results]
 
     # # 指定CSV文件路径
@@ -136,8 +145,7 @@ def run_inference():
     with open(csv_file_path, 'a', newline='') as csvfile:
         writer = csv.writer(csvfile)
         # 写入新数据
-        for row in data1:
-            writer.writerow(row)
+        writer.writerow(co_results)
     return r1,r5,r10
 
 def main():

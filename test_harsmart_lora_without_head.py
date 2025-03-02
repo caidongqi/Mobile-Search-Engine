@@ -22,7 +22,8 @@ import csv
 import argparse
 # # 创建解析器
 parser = argparse.ArgumentParser(description="Your script description")
-parser.add_argument("--vision_num_blocks", type=int,default=6, help="Number of vision blocks")
+parser.add_argument("--imu_num_blocks_input", type=int,default=6, help="Number of input blocks")
+parser.add_argument("--imu_num_blocks_query", type=int,default=6, help="Number of query blocks")
 parser.add_argument("--version", type=str, default='harsmart_withou_head', help="version of test lora")
 parser.add_argument("--lora_dir", type=str, default='/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/harsmart/without_head/trunk/e50/', help="lora dir")
 parser.add_argument("--embedding_path", type=str, default='parameters/image/harsmart/val/without_head/embeddings_{i_block}.pth', help="embeddings dir")

@@ -38,7 +38,7 @@ parser = argparse.ArgumentParser(description="Your script description")
 parser.add_argument("--device", type=str, default="cuda:0", help="Device to use (cuda:2 or cpu)")
 parser.add_argument("--lora_layers", default=0,type=int, help="Number of audio blocks")
 parser.add_argument("--lora_dir", default='/home/u2021010261/data/yx/Mobile-Search-Engine-main/.checkpoints/lora/flickr8k/with_head/trunk/e50/{lora_layers}',type=str, help="Number of audio blocks")
-parser.add_argument("--embedding_dir", default='parameters/image/flickr8k/val/withhead/embeddings_{v_block}.pth',type=str, help="Number of audio blocks")
+parser.add_argument("--embedding_dir", default='parameters/image/flickr8k/unbalanced/embeddings_{v_block}.pth',type=str, help="Number of audio blocks")
 
 
 # 解析命令行参数
@@ -84,7 +84,7 @@ embedding_dir=embedding_dir.format(v_block=v_block)
 
 if lora:
     model_1.modality_trunks.update(LoRA.apply_lora_modality_trunks(model_1.modality_trunks, rank=4,
-                                        layer_idxs={ModalityType.VISION: [i for i in range(0,lora_layers)]},
+                                        layer_idxs={ModalityType.VISION: [i for i in range(1,lora_layers+1)]},
                                         modality_names=[ModalityType.VISION]))
  
     LoRA.load_lora_modality_trunks(model_1.modality_trunks, checkpoint_dir=lora_dir, postfix = "_last")

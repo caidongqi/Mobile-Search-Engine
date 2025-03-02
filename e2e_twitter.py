@@ -72,9 +72,9 @@ coarse_embedding_dynamic_path=f'{parameter_embedding_folder}/dynamic/N={N}_S={S}
 layers_path=f"parameters/image/twitter/layers/N={N}_S={S}_v{version}.pkl"
 shortlist_path=f"{parameter_embedding_folder}/shortlist/shortlist_data_N={N}_S={S}_v{version}.pkl" # Different Q could share the same shortlist
 
-#imagebind target 
-imagebind_target_path="parameters/imagebind_targets/imagebind_32.pt"
-imagebind_targets=torch.load(imagebind_target_path)
+# #imagebind target 
+# imagebind_target_path="parameters/imagebind_targets/imagebind_32.pt"
+# imagebind_targets=torch.load(imagebind_target_path)
 
 if not os.path.exists(f'{parameter_embedding_folder}/dynamic'):
     os.makedirs(f'{parameter_embedding_folder}/dynamic', exist_ok=True)
@@ -245,21 +245,28 @@ if not os.path.exists(text_embeddings_dir):
     text_embeddings={}
     with torch.no_grad():
         # dynamic embedding classification
-        for batch_idx, (_,x, image_name) in enumerate(test_dl):
-            text_x=[text_prompt.format(x)]
-            inputs = {ModalityType.TEXT: data.load_and_transform_text(text_x, device)}
-            embeddings = fine_model(inputs)
-            text_embeddings=embeddings[ModalityType.TEXT]
-            all_text_embeddings.append(text_embeddings)
-            logging.info(f"batch_idx = {batch_idx} / {len(test_ds)}")
-
-    all_embeddings_tensor = torch.cat(all_text_embeddings, dim=0)
-    torch.save(all_embeddings_tensor, text_embeddings_dir)
-    logging.info(f"Data saved successfully to {text_embeddings_dir}")
-    all_text_embedding = all_embeddings_tensor
+        for batch_idx, (_,x, image_name) in enumerate(test_dl1):
+            target = torch.tensor([img_dict[name] for name in image_name]).to(device)
+            current_text_embedding_dynamic_path=f'{parameter_embedding_folder}/text_embeddings_{int(layers[target])}.pth'
+            if os.path.exists(current_text_embedding_dynamic_path):
+                current_embeddings = torch.load(current_text_embedding_dynamic_path, map_location=torch.device(args.device))['text_embeddings'][batch_idx]
+                if text_embeddings:
+                    text_embeddings[ModalityType.TEXT] = torch.cat([text_embeddings[ModalityType.TEXT], current_embeddings.unsqueeze(0).to(text_embeddings[ModalityType.TEXT].device)], dim=0)
+                else:
+                    text_embeddings[ModalityType.TEXT] = current_embeddings.unsqueeze(0)
+                del current_embeddings
+                        
+        torch.save({
+                'text_embeddings': text_embeddings[ModalityType.TEXT]
+            }, text_embeddings_dir)
+        logging.info('步骤2--Text dynamic不存在,已保存')
+            
+        logging.info(f"Text saved successfully to {text_embeddings_dir}")
+        all_text_embeddings = text_embeddings[ModalityType.TEXT]
+  
         
 else:  
-    all_text_embeddings = torch.load(text_embeddings_dir, map_location=torch.device(args.device))
+    all_text_embeddings = torch.load(text_embeddings_dir, map_location=torch.device(args.device))['text_embeddings']
     logging.info('text_embeddings存在,已加载')
 
 if os.path.exists(shortlist_path):
@@ -344,13 +351,12 @@ else:
                 text_embeddings = all_text_embeddings[batch_idx*batch_size:]
             else:
                 text_embeddings = all_text_embeddings[batch_idx*batch_size:(batch_idx+1)*batch_size]
-            # print(text_embeddings)
-            # print("------------------")
-            # print(coarse_embedding_dynamic[ModalityType.VISION])
+
             match_value = text_embeddings @coarse_embedding_dynamic[ModalityType.VISION].T 
     
             result = torch.softmax(match_value, dim=-1)
             _, predicted = torch.max(result, dim=-1)
+  
             top_indices_list = [torch.topk(result, k=k, dim=-1)[1] for k in K_list]
             
             for k, top_indices, item in zip(K_list, top_indices_list, K_caption_correct_list):
@@ -493,7 +499,7 @@ data1 = [
 ]
 
 # # 指定CSV文件路径
-csv_file_path = f'e2e_lora_{version}.csv'
+csv_file_path = f'results/e2e_twitter_{version}.csv'
 
 with open(csv_file_path, 'a', newline='') as csvfile:
     writer = csv.writer(csvfile)

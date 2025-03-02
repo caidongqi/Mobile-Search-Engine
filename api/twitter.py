@@ -43,10 +43,11 @@ class twitter(Dataset):
             line = self.lines[idx_plus]
             try:
                 img, text = line.split('.jpg,')
+                img_name = img + ".jpg"
             except:
                 img, text = line.split('.png,')
+                img_name = img + ".png"
             text = text.strip('"').strip("'").strip('.').strip(' ').lower()
-            img_name = img + ".jpg"
             img_path = os.path.join(self.root_dir, img_name)
             self.paths.append((img_path, text, img))
         train_paths, test_paths = train_test_split(self.paths, train_size=train_size, random_state=random_seed)

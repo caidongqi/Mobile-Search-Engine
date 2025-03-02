@@ -1,0 +1,460 @@
+# Based on PyTorch Lightning Tutorial 13 -
+# SSL : https://lightning.ai/docs/pytorch/stable/notebooks/course_UvA-DL/13-contrastive-learning.html
+# Modified by Fares Abawi (@fabawi).
+import copy
+import logging
+import os
+import argparse
+from api.twitter import twitter
+
+try:
+    import comet_ml
+except ImportError:
+    comet_ml = None
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
+    logging.warning("Matplotlib not installed. This is not needed if you run this script as --headless")
+
+import lightning as L
+from lightning.pytorch import Trainer, seed_everything
+from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch import loggers as pl_loggers
+
+
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import DataLoader, ConcatDataset
+import torchvision
+from torchvision import transforms
+from api.flickr import flickr8k,flickr30k
+import data
+
+from models import imagebind_model
+from models import lora as LoRA
+from models.imagebind_model import ModalityType, load_module, save_module
+
+logging.basicConfig(level=logging.INFO, force=True)
+
+# Logging settings
+LOG_ON_STEP = True
+LOG_ON_EPOCH = True
+
+text_prompt = 'a photo of {}.'
+
+class ContrastiveTransformations:
+    def __init__(self, base_transforms, n_views=2):
+        self.base_transforms = base_transforms
+        self.n_views = n_views
+
+    def __call__(self, x):
+        return [self.base_transforms(x) for _ in range(self.n_views)]
+
+
+class ImageBindTrain(L.LightningModule):
+    def __init__(self, lr=5e-4, weight_decay=1e-4, max_epochs=500, batch_size=32, num_workers=4, seed=42, 
+                 self_contrast=False, temperature=0.07,  momentum_betas=(0.9, 0.95), 
+                 lora=True, lora_rank=4, lora_checkpoint_dir="./.checkpoints/lora",
+                 lora_layer_idxs=None, lora_modality_names=None,
+                 linear_probing=False, caption_list=[],
+                 sub_lora_layer_idxs=None,sub_lora_modality_names=None,sub_lora_checkpoint_dir="./.checkpoints/lora",
+                 vision_num_blocks=1
+                 ):
+        super().__init__()
+        assert not (linear_probing and lora), \
+            "Linear probing is a subset of LoRA training procedure for ImageBind. " \
+            "Cannot set both linear_probing=True and lora=True. " \
+            "Linear probing stores params in lora_checkpoint_dir"
+        self.save_hyperparameters()
+        self.caption_list=caption_list
+        # Load full pretrained ImageBind model
+        self.model = imagebind_model.imagebind_huge(pretrained=True,vision_num_blocks=vision_num_blocks,audio_num_blocks=0) # imagebind中vision层数要和后面lora的最大层数相同
+        if lora:
+            for modality_preprocessor in self.model.modality_preprocessors.children():
+                modality_preprocessor.requires_grad_(False)
+            for modality_trunk in self.model.modality_trunks.children():
+                modality_trunk.requires_grad_(False)
+            # for modality_head in self.model.modality_heads.children():
+            #     modality_head.requires_grad_(False)
+            # for modality_postprocessor in self.model.modality_postprocessors.children():
+            #     modality_postprocessor.requires_grad_(False)
+                
+            self.model.modality_trunks.update(LoRA.apply_lora_modality_trunks(self.model.modality_trunks, rank=lora_rank,
+                                                                              layer_idxs=lora_layer_idxs,
+                                                                              modality_names=lora_modality_names))
+            LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=lora_checkpoint_dir)
+
+            for i in range(len(sub_lora_layer_idxs)):
+                LoRA.load_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=sub_lora_checkpoint_dir[i],require_grad=False)
+                for modality_name, one_layer_idxs in sub_lora_layer_idxs[i].items():
+                    for idx in one_layer_idxs:
+                        for a,para in self.model.modality_trunks[modality_name].lora_model.blocks[idx].named_parameters():
+                            para.requires_grad_(False)
+
+            # Load postprocessors & heads
+            # load_module(self.model.modality_postprocessors, module_name="postprocessors",
+            #             checkpoint_dir=lora_checkpoint_dir)
+            # load_module(self.model.modality_heads, module_name="heads",
+            #             checkpoint_dir=lora_checkpoint_dir)
+        elif linear_probing:
+            for modality_preprocessor in self.model.modality_preprocessors.children():
+                modality_preprocessor.requires_grad_(False)
+            for modality_trunk in self.model.modality_trunks.children():
+                modality_trunk.requires_grad_(False)
+            for modality_postprocessor in self.model.modality_postprocessors.children():
+                modality_postprocessor.requires_grad_(False)
+
+            load_module(self.model.modality_heads, module_name="heads",
+                        checkpoint_dir=lora_checkpoint_dir)
+            for modality_head in self.model.modality_heads.children():
+                modality_head.requires_grad_(False)
+                final_layer = list(modality_head.children())[-1]
+                final_layer.requires_grad_(True)
+        
+        for name,para in self.model.named_parameters():
+            print(name,para.size(),para.requires_grad)
+
+
+    def configure_optimizers(self):
+        optimizer = optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay, 
+                                betas=self.hparams.momentum_betas)
+        lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=self.hparams.max_epochs, eta_min=self.hparams.lr / 50
+        )
+        return [optimizer], [lr_scheduler]
+
+    def info_nce_loss(self, batch, mode="train"):
+        data_a, data_b, image_name = batch
+        data_a = [data_a]
+        text = [text_prompt.format(data_b[i]) for i in range(len(data_b))]
+        data_b = data.load_and_transform_text(text, self.device)
+        data_b = [data_b]
+
+        # class_a is always "vision" according to ImageBind
+        feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
+        feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
+        # class_b could be any modality
+        feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
+        feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
+
+        if self.hparams.self_contrast:
+            assert False, "Can not use self_contrast"
+            feats_a_b_tensor = torch.cat([feats_a_tensor.chunk(2)[0], feats_b_tensor], dim=0)
+            feats_tensors = [feats_a_tensor, feats_a_b_tensor]
+            temperatures = [1, self.hparams.temperature]
+            contrast = ["self", "cross"]
+        else:
+            feats_a_b_tensor = torch.cat([feats_a_tensor, feats_b_tensor], dim=0)
+            feats_tensors = [feats_a_b_tensor]
+            temperatures = [self.hparams.temperature]
+            contrast = ["cross"]
+
+        # Accumulate self-contrastive loss for image and its augmentation, and modailty with image
+        dual_nll = False
+        for feats_idx, feats_tensor in enumerate(feats_tensors):
+            # Calculate cosine similarity
+            cos_sim = F.cosine_similarity(feats_tensor[:, None, :], feats_tensor[None, :, :], dim=-1)
+            # Mask out cosine similarity to itself
+            self_mask = torch.eye(cos_sim.shape[0], dtype=torch.bool, device=cos_sim.device)
+            cos_sim.masked_fill_(self_mask, -9e15)
+            # Find positive example -> batch_size//2 away from the original example
+            pos_mask = self_mask.roll(shifts=cos_sim.shape[0] // 2, dims=0)
+            # InfoNCE loss
+            cos_sim = cos_sim / temperatures[feats_idx]
+            nll = -cos_sim[pos_mask] + torch.logsumexp(cos_sim, dim=-1)
+            nll = nll.mean()
+            if not dual_nll:
+                dual_nll = nll
+            else:
+                dual_nll += nll
+                dual_nll /= 2
+            # Logging loss
+            self.log(mode + "_loss_" + contrast[feats_idx], nll, prog_bar=True,
+                     on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+            # Get ranking position of positive example
+            comb_sim = torch.cat(
+                [cos_sim[pos_mask][:, None], cos_sim.masked_fill(pos_mask, -9e15)],  # First position positive example
+                dim=-1,
+            )
+            sim_argsort = comb_sim.argsort(dim=-1, descending=True).argmin(dim=-1)
+            # Logging ranking metrics
+            self.log(mode + "_acc_top1", (sim_argsort == 0).float().mean(), prog_bar=True,
+                     on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+            self.log(mode + "_acc_top5", (sim_argsort < 5).float().mean(), prog_bar=True,
+                     on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+            self.log(mode + "_acc_mean_pos", 1 + sim_argsort.float().mean(), prog_bar=True,
+                     on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+
+        self.log(mode + "_loss", dual_nll, prog_bar=True,
+                 on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+        return dual_nll
+
+    def training_step(self, batch, batch_idx):
+        return self.info_nce_loss(batch, mode="train")
+
+    def validation_step(self, batch, batch_idx):
+        pass
+        # global test_caption_tensor
+        # data_a, _ , target = batch
+        # # print(data_a.shape,data_b.shape,batch_idx,ids) #torch.Size([bs, 3, 224, 224]) torch.Size([bs, 1, 77]) 0 tensor([0, 1])
+        # if test_caption_tensor==None:
+        #     test_caption_tensor = test_dataset.load_and_transform_text(test_dataset.caption_list).to(device)
+        # data_b=test_caption_tensor
+        # # print(data_b.shape) torch.Size([25014, 77]) total val size
+        # # print(data_a.shape,data_b.shape,data_a.device,data_b.device) # torch.Size([2, 3, 224, 224]) torch.Size([25014, 77]) cuda:0 cuda:0
+        # data_b = [data_b]
+        # data_a = [data_a]
+        # # class_a is always "vision" according to ImageBind
+        # feats_a = [self.model({ModalityType.VISION: data_a_i}) for data_a_i in data_a]
+        # feats_a_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_a], dim=0)
+        # # class_b could be any modality
+        # feats_b = [self.model({ModalityType.TEXT: data_b_i}) for data_b_i in data_b]
+        # feats_b_tensor = torch.cat([list(dict_.values())[0] for dict_ in feats_b], dim=0)
+
+        # match_value = feats_a_tensor @ feats_b_tensor.T
+
+        # result = torch.softmax(match_value, dim=-1)
+        # _, predicted = torch.max(result, -1)
+        # correct = predicted.eq(target).sum()
+        # test_correct = correct.item()
+        # test_total = target.size(0)
+        # self.log("val" + "_acc_top1", test_correct / test_total, prog_bar=True,
+        #         on_step=LOG_ON_STEP, on_epoch=LOG_ON_EPOCH, batch_size=self.hparams.batch_size)
+
+
+    def on_validation_epoch_end(self):
+        if self.hparams.lora:
+            # Save LoRA checkpoint
+            LoRA.save_lora_modality_trunks(self.model.modality_trunks, checkpoint_dir=self.hparams.lora_checkpoint_dir)
+            # Save postprocessors & heads
+            save_module(self.model.modality_postprocessors, module_name="postprocessors",
+                        checkpoint_dir=self.hparams.lora_checkpoint_dir)
+            save_module(self.model.modality_heads, module_name="heads",
+                        checkpoint_dir=self.hparams.lora_checkpoint_dir)
+        elif self.hparams.linear_probing:
+            # Save postprocessors & heads
+            save_module(self.model.modality_heads, module_name="heads",
+                        checkpoint_dir=self.hparams.lora_checkpoint_dir)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train the ImageBind model with PyTorch Lightning and LoRA.")
+    parser.add_argument("--seed", type=int, default=43, help="Random seed for reproducibility")
+    parser.add_argument("--device", type=str, default="cuda:0", help="Device to use for training ('cpu' or 'cuda')")
+    parser.add_argument("--datasets_dir", type=str, default="/home/u2021010261/data/yx/imagenet", # 数据集
+                        help="Directory containing the datasets")
+    parser.add_argument("--full_model_checkpoint_dir", type=str, default="./.checkpoints/full", # imagebind模型
+                        help="Directory to save the full model checkpoints")
+    parser.add_argument("--full_model_checkpointing", action="store_true", help="Save full model checkpoints")
+    parser.add_argument("--loggers", type=str, nargs="+", choices=["tensorboard", "wandb", "comet", "mlflow"],
+                        help="Loggers to use for logging")
+    parser.add_argument("--loggers_dir", type=str, default="./logs", help="Directory to save the logs") # log地址
+    parser.add_argument("--headless", action="store_true", help="Run in headless mode (Don't plot samples on start)")
+
+    parser.add_argument("--max_epochs", type=int, default=50, help="Maximum number of epochs to train") # epoch设置
+    parser.add_argument("--batch_size", type=int, default=2, help="Batch size for training and validation") # bs设置
+    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
+    parser.add_argument("--weight_decay", type=float, default=1e-4, help="Weight decay")
+    parser.add_argument("--momentum_betas", nargs=2, type=float, default=[0.9, 0.95],
+                        help="Momentum beta 1 and 2 for Adam optimizer")
+    parser.add_argument("--gradient_clip_val", type=float, default=1.0, help="Gradient clipping value")
+    parser.add_argument("--temperature", type=float, default=0.07, help="Temperature parameter for InfoNCE loss")
+    parser.add_argument("--num_workers", type=int, default=8, help="Number of workers for data loading")
+    parser.add_argument("--self_contrast", action="store_true", help="Use self-contrast on the image modality")
+
+    
+    parser.add_argument("--lora", default=True, action="store_true", help="Use LoRA")
+    parser.add_argument("--lora_rank", type=int, default=4, help="Rank of LoRA layers")
+    parser.add_argument("--lora_checkpoint_dir", type=str, default=".checkpoints/lora/imagenet/step1/5", # 现在要训练的lora的存储文件夹，需要提前新建
+                        help="Directory to save LoRA checkpoint")
+    parser.add_argument("--lora_modality_names", nargs="+", type=str, default=["vision"],
+                        choices=["vision", "text", "audio", "thermal", "depth", "imu"],
+                        help="Modality names to apply LoRA")
+    parser.add_argument("--lora_layer_idxs", nargs="+", type=int,
+                        help="Layer indices to apply LoRA")
+    parser.add_argument("--lora_layer_idxs_vision", nargs="+", type=int,default=[1], # 总的lora的层的idx
+                        help="Layer indices to apply LoRA for vision modality. Overrides lora_layer_idxs if specified")
+    parser.add_argument("--lora_layer_idxs_text", nargs="+", type=int,
+                        help="Layer indices to apply LoRA for text modality. Overrides lora_layer_idxs if specified")
+    parser.add_argument("--lora_layer_idxs_audio", nargs="+", type=int,
+                        help="Layer indices to apply LoRA for audio modality. Overrides lora_layer_idxs if specified")
+    parser.add_argument("--lora_layer_idxs_thermal", nargs="+", type=int,
+                        help="Layer indices to apply LoRA for thermal modality. Overrides lora_layer_idxs if specified")
+    parser.add_argument("--lora_layer_idxs_depth", nargs="+", type=int,
+                        help="Layer indices to apply LoRA for depth modality. Overrides lora_layer_idxs if specified")
+    parser.add_argument("--lora_layer_idxs_imu", nargs="+", type=int,
+                        help="Layer indices to apply LoRA for imu modality. Overrides lora_layer_idxs if specified")
+
+    parser.add_argument("--linear_probing", action="store_true",
+                        help="Freeze model and train the last layers of the head for each modality.")
+    parser.add_argument('--lora_type',type=str,default='progressive')
+    parser.add_argument('--dataset_ratio',type=int,default=10)
+
+    return parser.parse_args()
+
+import os
+if __name__ == "__main__":
+    args = parse_args()
+    lora_type=args.lora_type
+    dataset_ratio=args.dataset_ratio
+    lora_checkpoint_dir=str(args.lora_checkpoint_dir)
+    now_step=int(lora_checkpoint_dir.split("/")[-1])
+    pre_step=now_step-1
+    sub_lora_checkpoint_dir=''
+    if pre_step==0: # first layer or trunk lora
+        sub_lora_checkpoint_dir=None
+    else:
+        sub_lora_checkpoint_dir=[lora_checkpoint_dir.replace(f'/{now_step}',f'/{pre_step}')]
+    args.lora_layer_idxs_vision=[i for i in range(0,now_step)]
+    vision_num_blocks=now_step
+    all_sub_lora_layer_idxs = [[i for i in range(0,pre_step)]]
+    all_sub_lora_layer_idxs=[] if all_sub_lora_layer_idxs==[[]]else all_sub_lora_layer_idxs
+    if lora_type=='trunk':
+        all_sub_lora_layer_idxs=[]
+    os.makedirs(lora_checkpoint_dir,exist_ok=True)
+    print(f"{now_step=},{vision_num_blocks=},{args.lora_layer_idxs_vision=},{all_sub_lora_layer_idxs=}")
+    print(f"{lora_checkpoint_dir=},{sub_lora_checkpoint_dir=}")
+    torch.set_float32_matmul_precision("high")
+    # Create loggers
+    loggers = []
+    for logger in args.loggers if args.loggers is not None else []:
+        if logger == "wandb":
+            wandb.init(project="imagebind", config=args)
+            wandb_logger = pl_loggers.WandbLogger(
+                save_dir=args.loggers_dir,
+                name="imagebind")
+            loggers.append(wandb_logger)
+        elif logger == "tensorboard":
+            tensorboard_logger = pl_loggers.TensorBoardLogger(
+                save_dir=args.loggers_dir,
+                name="imagebind")
+            loggers.append(tensorboard_logger)
+        elif logger == "comet":
+            comet_logger = pl_loggers.CometLogger(
+                save_dir=args.loggers_dir,
+                api_key=os.environ["COMET_API_KEY"],
+                workspace=os.environ["COMET_WORKSPACE"],
+                project_name=os.environ["COMET_PROJECT_NAME"],
+                experiment_name=os.environ.get("COMET_EXPERIMENT_NAME", None),
+            )
+            loggers.append(comet_logger)
+        elif logger == "mlflow":
+            mlflow_logger = pl_loggers.MLFlowLogger(
+                save_dir=args.loggers_dir,
+                experiment_name=os.environ["MLFLOW_EXPERIMENT_NAME"],
+                tracking_uri=os.environ["MLFLOW_TRACKING_URI"],
+                run_name="imagebind"
+            )
+            loggers.append(mlflow_logger)
+        else:
+            raise ValueError(f"Unknown logger: {logger}")
+
+    # Set experiment properties
+    seed_everything(args.seed, workers=True)
+    torch.backends.cudnn.determinstic = True
+    device_name = args.device  # "cuda:0" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device_name)
+
+    # datadir = ".datasets/flickr8k/images"
+    # anne_dir = ".datasets/flickr8k/captions.txt"
+    # train_dataset = flickr8k(root_dir=datadir, anne_dir=anne_dir, split='train')
+    # val_dataset = flickr8k(root_dir=datadir, anne_dir=anne_dir, split='test')
+    # train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True,
+    #     num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
+    # val_loader = torch.utils.data.DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False,
+    #     num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
+
+    datadir = ".datasets/twitter_imgs"
+    anne_dir = ".datasets/tweets_images_texts.txt"
+    val_dataset = twitter(root_dir=datadir, anne_dir=anne_dir, split='test')
+    train_dataset = twitter(root_dir=datadir, anne_dir=anne_dir, split='train')
+    train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True,
+        num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
+    val_loader = torch.utils.data.DataLoader(dataset=val_dataset, batch_size=args.batch_size, shuffle=False, drop_last=False,
+        num_workers=args.num_workers, pin_memory=True, persistent_workers=True)
+
+
+    print(f'{len(train_dataset)=}')
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last=True,
+        pin_memory=True,
+        num_workers=args.num_workers,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        drop_last=False,
+        pin_memory=True,
+        num_workers=args.num_workers,
+    )
+    print('created dataloader')
+    # Parse indices of layers to apply LoRA
+    lora_layer_idxs = {}
+    lora_modality_names = []
+    modalities = ["vision", "text", "audio", "thermal", "depth", "imu"]
+    for modality_name in args.lora_modality_names:
+        if modality_name in modalities:
+            modality_type = getattr(ModalityType, modality_name.upper())
+            lora_layer_idxs[modality_type] = getattr(args, f'lora_layer_idxs_{modality_name}', None)
+            if not lora_layer_idxs[modality_type]:
+                lora_layer_idxs[modality_type] = None
+            lora_modality_names.append(modality_type)
+        else:
+            raise ValueError(f"Unknown modality name: {modality_name}")
+    
+    sub_lora_modality_names=[]
+    sub_lora_layer_idxs=[]
+    for i in range(len(all_sub_lora_layer_idxs)):
+        one_idxs = {}
+        one_names = []
+        for modality_name in args.lora_modality_names:
+            if modality_name in modalities:
+                modality_type = getattr(ModalityType, modality_name.upper())
+                one_idxs[modality_type] = all_sub_lora_layer_idxs[i]
+                one_names.append(modality_type)
+        sub_lora_layer_idxs.append(one_idxs)
+        sub_lora_modality_names.append(one_names)
+
+    # Train dataset
+    model = ImageBindTrain(max_epochs=args.max_epochs, batch_size=args.batch_size, lr=args.lr,
+                           weight_decay=args.weight_decay, momentum_betas=args.momentum_betas,
+                           temperature=args.temperature,
+                           num_workers=args.num_workers, self_contrast=args.self_contrast,
+                           lora=args.lora, lora_rank=args.lora_rank, lora_checkpoint_dir=args.lora_checkpoint_dir,
+                           lora_layer_idxs=lora_layer_idxs if lora_layer_idxs else None,
+                           lora_modality_names=lora_modality_names if lora_modality_names else None,
+                           linear_probing=args.linear_probing,
+                           sub_lora_checkpoint_dir=sub_lora_checkpoint_dir,#['.checkpoints/lora/imagenet/step4/12'], #上一次训练的lora的文件夹
+                           sub_lora_modality_names=sub_lora_modality_names,
+                           sub_lora_layer_idxs=sub_lora_layer_idxs,
+                           vision_num_blocks=vision_num_blocks)
+
+    if args.full_model_checkpointing:
+        checkpointing = {"enable_checkpointing": args.full_model_checkpointing,
+                         "callbacks": [ModelCheckpoint(monitor="val_loss", dirpath=args.full_model_checkpoint_dir,
+                                                        filename="imagebind-{epoch:02d}-{val_loss:.2f}",
+                                                        save_last=True, mode="min")]}
+    else:
+        checkpointing = {"enable_checkpointing": args.full_model_checkpointing,}
+    #devices=1 if ":" not in device_name else [int(device_name.split(":")[1])]
+    
+    trainer = Trainer(accelerator="gpu" if "cuda" in device_name else "cpu",
+                      devices=[0], deterministic=True,
+                      max_epochs=args.max_epochs, gradient_clip_val=args.gradient_clip_val,
+                      logger=loggers if loggers else None, **checkpointing, strategy='ddp_find_unused_parameters_true',
+                      check_val_every_n_epoch=1,precision='bf16-mixed')
+
+    trainer.fit(model, train_loader, val_loader)
+
+

@@ -220,7 +220,7 @@ if not os.path.exists(text_embeddings_dir):
     all_embeddings_tensor = torch.cat(all_text_embeddings, dim=0)
     torch.save(all_embeddings_tensor, text_embeddings_dir)
     logging.info(f"Data saved successfully to {text_embeddings_dir}")
-    all_text_embedding = all_embeddings_tensor
+    all_text_embeddings = all_embeddings_tensor
         
 else:  
     all_text_embeddings = torch.load(text_embeddings_dir, map_location=torch.device(args.device))
