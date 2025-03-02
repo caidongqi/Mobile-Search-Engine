@@ -1,4 +1,21 @@
-## Installation
+# Always-on Mobile Multimodal Embedding
+
+
+## Table of Contents
+
+- [Environment Installation](#environment-installation)
+
+- [Code structure](#code-structure)
+- [Usage](#usage)
+    - [Search Demo](#search-demo)
+    - [Fine-tuning](#fine-tuning)
+    - [End-to-end System Workflow](#end-to-end-experiments-instruction)
+    <!-- - [train_lumen_imagenet.py](#train_lumen_imagenet.py) -->
+
+
+
+
+## Environment Installation
 Make sure to clone this repository recursively to include the submodules:
 
 ```bash
@@ -14,7 +31,51 @@ Install `matplotlib` when using the `train.py` script without the `--headless` a
 pip install --upgrade fastapi
 ```
 
-## Search
+Install pytorch 1.13+ and other 3rd party dependencies.
+
+```shell
+conda create --name imagebind python=3.8 -y
+conda activate imagebind
+
+pip install -r requirements.txt
+```
+
+Install `matplotlib` when using the `train.py` script without the `--headless` argument.
+
+Please follow the original [instructions](https://github.com/facebookresearch/ImageBind) for further information.
+
+## Code structure
+TODO: Put all plot scripts into `plot_scripts/`.
+```
+├── api/
+│   └── *data pre-processors*
+├── datasets/
+│   └── *data loader*
+├── ImageBind-LoRA/
+│   └── *lora training code*
+├── lightning_logs/
+│   └── *automated generated logs*
+├── logs/
+│   └── *mannually generated logs*
+├── metrics/
+│   └── *evaluation metrics and benchmarking scripts*
+├── models/
+│   └── *definition of neural network models and execution workflow*
+├── plot_scripts/
+│   └── *draw figures* 
+├── audio_process.py
+├── data.py
+├── lumen_2_infer.py
+├── lumen_imagenet.py
+├── ...
+└── train.py
+```
+
+
+# Usage
+
+
+## Search demo
 
 In `search.py`, you can find an example of how to use the model for search images of target label. To try the `LoRA` fine-tuned model, change `lora=True`, set the fine-tuned model's path `lora_dir` and the parameters in `LoRA.apply_lora_modality_trunks()` within the script. To try the original ImageBind model, set `lora=False`.
 And you can set the trunk blocks of each modlity when use imagebind_model.imagebind_huge().
