@@ -1,0 +1,8 @@
+logs/*
+results/*
+api/__pycache__/*
+.checkpoints/imagebind_huge.pth
+bpe/bpe_simple_vocab_16e6.txt.gz
+models/__pycache__/*
+models/twitter/*
+parameters/*

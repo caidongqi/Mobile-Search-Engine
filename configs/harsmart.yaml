@@ -1,0 +1,13 @@
+dataset_name: "harsmart"
+
+data_params:
+  data_root: "data/harsmart"
+  annotation_file: "data/harsmart/annotations.json"
+  sequence_length: 100
+  num_classes: 6
+
+default_params:
+  lora_dir: ".checkpoints/lora/harsmart/with_head/trunk/e50"
+  embeddings_path: "parameters/imu/harsmart"
+  version: "harsmart"
+  topk_values: [1, 5, 10, 20, 30, 40] 

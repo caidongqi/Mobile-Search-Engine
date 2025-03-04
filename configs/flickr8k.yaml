@@ -1,0 +1,15 @@
+dataset_name: "flickr8k"
+
+data_params:
+  data_root: "data/flickr8k/images"
+  annotation_file: "data/flickr8k/annotations.json"
+  text_annotation_file: "data/flickr8k/captions.txt"
+  image_size: 224
+  text_prompt: "a photo of {}."
+  img_dict_path: "data/flickr8k/flickr8k_img_dict.pkl"
+
+default_params:
+  lora_dir: ".checkpoints/lora/flickr8k/with_head/trunk/e50"
+  embeddings_path: "parameters/image/flickr8k"
+  version: "flickr8k"
+  topk_values: [1, 5, 10, 20, 30, 40] 

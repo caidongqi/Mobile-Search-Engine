@@ -1,0 +1,13 @@
+dataset_name: "clotho"
+
+data_params:
+  data_root: "data/clotho_audio_files/evaluation"
+  annotation_file: "data/clotho_csv_files/clotho_captions_evaluation.csv"
+  audio_sample_rate: 44100
+  audio_duration: 10
+
+default_params:
+  lora_dir: ".checkpoints/lora/clotho/with_head/trunk/e50"
+  embeddings_path: "parameters/audio/clotho"
+  version: "clotho"
+  topk_values: [1, 5, 10, 20, 30, 40] 

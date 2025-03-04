@@ -1,0 +1,26 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "Python 调试程序: get_embedding.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/get_embedding.py",
+            "args": [
+            "--lora_layers", "1",
+            "--lora_dir", "/home/public/pc/Mobile-Search-Engine/.checkpoints/lora/twitter/with_head/trunk/e50",
+            "--embedding_dir", "parameters/image/twitter_quantized_quantized/embeddings_1.pth",
+            "--version", "twitter_quantized",
+            "--dataset", "twitter",
+            "--data_root", "/home/public/pc/Mobile-Search-Engine/.datasets/twitter_imgs",
+            "--quantized",
+            "--annotation_file", "/home/public/pc/Mobile-Search-Engine/.datasets/tweets_images_texts.txt"
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}

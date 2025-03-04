@@ -1,0 +1,20 @@
+dataset_name: "coco"
+
+data_params:
+  data_root: "data/coco"
+  annotation_file: "data/coco/annotations/instances_val2017.json"
+  image_size: 224
+  num_classes: 80
+
+scripts:
+  get_embedding: "get_embedding_coco.py"
+  get_embedding_lora: "get_embedding_coco_lora.py"
+  test: "test_coco.py"
+  find_layers: "get_layers_coco.py"
+  predict: "model_predict_coco.py"
+
+default_params:
+  lora_dir: ".checkpoints/lora/coco/with_head/trunk/e50"
+  embeddings_path: "parameters/image/coco"
+  version: "coco"
+  topk_values: [1, 5, 10, 20, 30, 40] 
