@@ -15,7 +15,7 @@
 
 
 
-## Environment Installation
+## Environment Installation [Typical install time: 10 mins]
 Make sure to clone this repository recursively to include the submodules:
 
 ```bash
@@ -155,7 +155,7 @@ assuming the `--lora_checkpoint_dir` remains the same.
 
 ## End-to-end experiments instruction:
 
-## E2E (end to end)
+## E2E (end to end) [Expected run time: 1 hour with provided check points]
 To construct an e2e system, you have 4 steps to go. In `run_dataset.py`, you can see the whole pipeline of clotho dataset,  the same pattern applies when using other datasets.
 
 ### Step 1: Get every embedding of the data with different model layers.
