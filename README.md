@@ -231,8 +231,3 @@ Output:
 the dynamic search accuracy\the e2e search accuracy
 
 
-
-
-
-
-### Step4: Use the labels got in Step3 to dynamically embed th dataset and get the prediction results.
